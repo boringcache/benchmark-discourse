@@ -1,0 +1,253 @@
+name: "Discourse Dependency CAS - BoringCache"
+run-name: >-
+  ${{ format('Dependency CAS {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_lane:
+        description: "Benchmark lane"
+        required: false
+        type: choice
+        default: fresh
+        options:
+          - fresh
+          - rolling
+      layout:
+        description: "Package CAS proof or archive control"
+        required: false
+        type: choice
+        default: package-cas
+        options:
+          - package-cas
+          - archive-control
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}-${{ github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BENCHMARK_ID: discourse-deps
+  BENCHMARK_WORKSPACE: ${{ github.repository }}
+  CACHE_LANE: ${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  LAYOUT: ${{ github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas' }}
+  BUNDLE_PATH: vendor/bundle
+
+jobs:
+  seed:
+    name: ${{ format('Seed dependency cache ({0})', inputs.layout || 'package-cas') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      cache_entry: ${{ steps.scope.outputs.cache_entry }}
+      cache_scope: ${{ steps.scope.outputs.cache_scope }}
+      restore_seconds: ${{ steps.restore.outputs.seconds }}
+      install_seconds: ${{ steps.install.outputs.seconds }}
+      save_seconds: ${{ steps.save.outputs.seconds }}
+    steps:
+      - name: Validate BoringCache secrets
+        env:
+          BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN || secrets.BORINGCACHE_API_TOKEN }}
+          BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN || secrets.BORINGCACHE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ -n "${BORINGCACHE_RESTORE_TOKEN}" ]] || { echo "Missing BoringCache restore token" >&2; exit 1; }
+          [[ -n "${BORINGCACHE_SAVE_TOKEN}" ]] || { echo "Missing BoringCache save token" >&2; exit 1; }
+
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Checkout pinned upstream submodules shallowly
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+
+      - name: Prepare benchmark source tree
+        run: ./scripts/prepare-source.sh base
+
+      - name: Install system packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq-dev libyaml-dev
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          working-directory: upstream
+          bundler-cache: false
+
+      - name: Install BoringCache CLI
+        uses: boringcache/one@v1
+        with:
+          setup: none
+          mode: archive
+          workspace: ${{ env.BENCHMARK_WORKSPACE }}
+
+      - name: Prepare dependency cache scope
+        id: scope
+        run: |
+          set -euo pipefail
+          ref_slug="$(printf '%s' "${GITHUB_REF_NAME}" | tr -c 'A-Za-z0-9._-' '-')"
+          ref_slug="${ref_slug#-}"
+          ref_slug="${ref_slug%-}"
+          ref_slug="${ref_slug:-main}"
+          if [[ "${CACHE_LANE}" == "rolling" ]]; then
+            cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${LAYOUT}"
+          else
+            cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${LAYOUT}"
+          fi
+          cache_entry="bundler-${cache_scope}:vendor/bundle"
+          echo "cache_scope=${cache_scope}" >> "${GITHUB_OUTPUT}"
+          echo "cache_entry=${cache_entry}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure Bundler
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          bundle config set path vendor/bundle
+
+      - name: Restore dependency cache
+        id: restore
+        working-directory: upstream
+        env:
+          BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN || secrets.BORINGCACHE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          boringcache restore "${BENCHMARK_WORKSPACE}" "${{ steps.scope.outputs.cache_entry }}" --verbose
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Bundle install
+        id: install
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          bundle install --jobs 4 --retry 3
+          bundle check
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Save dependency cache
+        id: save
+        working-directory: upstream
+        env:
+          BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN || secrets.BORINGCACHE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          args=(save "${BENCHMARK_WORKSPACE}" "${{ steps.scope.outputs.cache_entry }}" --force --verbose)
+          if [[ "${LAYOUT}" == "archive-control" ]]; then
+            args+=(--exclude ".boringcache-force-archive-never-match")
+          fi
+          boringcache "${args[@]}"
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write seed summary
+        run: |
+          {
+            echo "### Discourse dependency cache seed"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---:|"
+            echo "| Layout | ${LAYOUT} |"
+            echo "| Lane | ${CACHE_LANE} |"
+            echo "| Scope | ${{ steps.scope.outputs.cache_scope }} |"
+            echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
+            echo "| Bundle install seconds | ${{ steps.install.outputs.seconds }} |"
+            echo "| Save seconds | ${{ steps.save.outputs.seconds }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  warm-restore:
+    name: Warm dependency restore
+    if: ${{ inputs.cache_lane != 'rolling' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: seed
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Checkout pinned upstream submodules shallowly
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+
+      - name: Prepare benchmark source tree
+        run: ./scripts/prepare-source.sh base
+
+      - name: Install system packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq-dev libyaml-dev
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          working-directory: upstream
+          bundler-cache: false
+
+      - name: Install BoringCache CLI
+        uses: boringcache/one@v1
+        with:
+          setup: none
+          mode: archive
+          workspace: ${{ env.BENCHMARK_WORKSPACE }}
+
+      - name: Configure Bundler
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          bundle config set path vendor/bundle
+
+      - name: Restore dependency cache
+        id: restore
+        working-directory: upstream
+        env:
+          BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN || secrets.BORINGCACHE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          boringcache restore "${BENCHMARK_WORKSPACE}" "${{ needs.seed.outputs.cache_entry }}" --verbose
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify restored bundle
+        id: verify
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          bundle check || bundle install --jobs 4 --retry 3
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write warm summary
+        run: |
+          {
+            echo "### Discourse dependency cache warm restore"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---:|"
+            echo "| Layout | ${LAYOUT} |"
+            echo "| Scope | ${{ needs.seed.outputs.cache_scope }} |"
+            echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
+            echo "| Verify seconds | ${{ steps.verify.outputs.seconds }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
