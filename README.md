@@ -7,7 +7,7 @@ This repo exists separately from the central benchmarks publisher so Discourse c
 - a pinned upstream source commit
 - isolated GitHub Actions cache usage
 - one per-repo BoringCache workspace name: `boringcache/benchmark-discourse`
-- independent benchmark runs triggered by upstream sync commits and manual dispatches
+- independent benchmark runs triggered by upstream sync commits, manual dispatches, and weekly fresh samples
 
 ## Source Model
 
@@ -26,7 +26,7 @@ Discourse uses Docker through the `discourse/discourse_docker` repo rather than 
 - `cold`
 - `warm1`
 
-Fresh lane runs a no-prior-cache cold build plus one warm rerun on the same pinned source tree. Rolling lane records the upstream commit build as-is after each upstream sync against the prior rolling cache and skips `warm1`.
+Fresh lane runs a no-prior-cache cold build plus one warm rerun on the same pinned source tree. Fresh samples run weekly and can also be dispatched manually. Rolling lane records the upstream commit build as-is after each upstream sync against the prior rolling cache and skips `warm1`.
 
 BoringCache uses the outer BuildKit registry/OCI cache path only. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit.
 
