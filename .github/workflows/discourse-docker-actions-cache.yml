@@ -1,0 +1,59 @@
+name: "Discourse Docker - Actions Cache"
+run-name: >-
+  ${{ format('{0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling' && 'AC Rolling' || 'AC Fresh', github.event_name == 'push' && github.event.head_commit.message || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_lane:
+        description: "Benchmark lane"
+        required: false
+        type: choice
+        default: fresh
+        options:
+          - fresh
+          - rolling
+  push:
+    branches:
+      - main
+    paths:
+      - ".gitmodules"
+      - "upstream"
+      - "docker-upstream"
+  pull_request:
+    paths:
+      - ".gitmodules"
+      - ".github/workflows/discourse-docker-boringcache.yml"
+      - ".github/workflows/discourse-docker-actions-cache.yml"
+      - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
+      - "README.md"
+      - "benchmark/**"
+      - "scenarios/**"
+      - "scripts/**"
+      - "upstream"
+      - "docker-upstream"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
+    with:
+      strategy: actions-cache
+      cache_lane: ${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+      benchmark_id: discourse-docker
+      project_repo: discourse/discourse
+      dockerfile_path: benchmark/discourse-dev.Dockerfile
+      docker_context: .
+      image_tag: discourse-benchmark:latest
+      benchmark_workspace: ${{ github.repository }}
+    secrets: inherit
+    permissions:
+      contents: read
+      actions: write

@@ -1,0 +1,8 @@
+[submodule "upstream"]
+	path = upstream
+	url = https://github.com/discourse/discourse.git
+	shallow = true
+[submodule "docker-upstream"]
+	path = docker-upstream
+	url = https://github.com/discourse/discourse_docker.git
+	shallow = true

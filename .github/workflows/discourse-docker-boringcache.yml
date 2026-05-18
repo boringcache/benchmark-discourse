@@ -1,0 +1,80 @@
+name: "Discourse Docker - BoringCache"
+run-name: >-
+  ${{ format('{0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling' && 'BC Rolling' || 'BC Fresh', github.event_name == 'push' && github.event.head_commit.message || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_lane:
+        description: "Benchmark lane"
+        required: false
+        type: choice
+        default: fresh
+        options:
+          - fresh
+          - rolling
+      cli_ref:
+        description: "Internal benchmark diagnostic only: build this boringcache/cli ref instead of using the released CLI"
+        required: false
+        type: string
+      blob_download_concurrency:
+        description: "Optional BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY override (blank = adaptive)"
+        required: false
+        type: string
+      blob_prefetch_concurrency:
+        description: "Optional BORINGCACHE_BLOB_PREFETCH_CONCURRENCY override (blank = match download concurrency)"
+        required: false
+        type: string
+      oci_stream_through_min_bytes:
+        description: "Optional BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES for Docker/OCI large blobs (blank = disabled)"
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - ".gitmodules"
+      - "upstream"
+      - "docker-upstream"
+  pull_request:
+    paths:
+      - ".gitmodules"
+      - ".github/workflows/discourse-docker-boringcache.yml"
+      - ".github/workflows/discourse-docker-actions-cache.yml"
+      - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
+      - "README.md"
+      - "benchmark/**"
+      - "scenarios/**"
+      - "scripts/**"
+      - "upstream"
+      - "docker-upstream"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  benchmark:
+    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
+    with:
+      strategy: boringcache
+      cache_lane: ${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+      benchmark_id: discourse-docker
+      project_repo: discourse/discourse
+      dockerfile_path: benchmark/discourse-dev.Dockerfile
+      docker_context: .
+      image_tag: discourse-benchmark:latest
+      cli_platform: linux-amd64
+      benchmark_workspace: ${{ github.repository }}
+      cli_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.cli_ref || '' }}
+      blob_download_concurrency: ${{ github.event_name == 'workflow_dispatch' && inputs.blob_download_concurrency || '' }}
+      blob_prefetch_concurrency: ${{ github.event_name == 'workflow_dispatch' && inputs.blob_prefetch_concurrency || '' }}
+      oci_stream_through_min_bytes: ${{ github.event_name == 'workflow_dispatch' && inputs.oci_stream_through_min_bytes || '' }}
+    secrets: inherit
+    permissions:
+      contents: read
+      actions: write
