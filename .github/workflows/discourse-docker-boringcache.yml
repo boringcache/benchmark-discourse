@@ -1,6 +1,6 @@
 name: "Discourse Docker - BoringCache"
 run-name: >-
-  ${{ format('{0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling' && 'BC Rolling' || 'BC Fresh', github.event_name == 'push' && github.event.head_commit.message || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
+  ${{ format('{0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling' && 'BC Rolling' || 'BC Fresh', github.event_name == 'schedule' && 'Weekly fresh benchmark' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
 
 on:
   workflow_dispatch:
@@ -29,13 +29,8 @@ on:
         description: "Optional BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES for Docker/OCI large blobs (blank = disabled)"
         required: false
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - ".gitmodules"
-      - "upstream"
-      - "docker-upstream"
+  schedule:
+    - cron: "17 3 * * 0"
   pull_request:
     paths:
       - ".gitmodules"
