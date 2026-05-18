@@ -3,6 +3,20 @@ name: "Rolling Benchmark Dispatch"
 on:
   workflow_dispatch:
     inputs:
+      run_docker:
+        description: "Dispatch the Docker rolling benchmark pair"
+        required: false
+        type: boolean
+        default: true
+      dependency_cas:
+        description: "Dependency-CAS rolling dispatch"
+        required: false
+        type: choice
+        default: auto
+        options:
+          - auto
+          - force
+          - skip
       blob_download_concurrency:
         description: "Optional BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY override for the BC run"
         required: false
@@ -32,8 +46,90 @@ permissions:
   actions: write
 
 jobs:
-  dispatch:
-    name: Dispatch rolling benchmark pair
+  dependency-changes:
+    name: Detect dependency changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.dependency.outputs.should_run }}
+      reason: ${{ steps.dependency.outputs.reason }}
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Detect dependency benchmark change
+        id: dependency
+        env:
+          DEPENDENCY_CAS_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dependency_cas || 'auto' }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          should_run=false
+          reason="no dependency manifest changes detected"
+          dependency_pattern='(^|/)(Gemfile|Gemfile\.lock|gems\.rb|gems\.locked|package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$'
+
+          case "${DEPENDENCY_CAS_MODE}" in
+            force)
+              should_run=true
+              reason="forced by workflow dispatch input"
+              ;;
+            skip)
+              reason="skipped by workflow dispatch input"
+              ;;
+            auto)
+              if [[ "${GITHUB_EVENT_NAME}" != "push" ]]; then
+                reason="manual auto mode skipped; choose force to run dependency-CAS"
+              elif [[ "${EVENT_BEFORE}" =~ ^0+$ ]]; then
+                should_run=true
+                reason="new branch push"
+              else
+                old_upstream="$(git ls-tree "${EVENT_BEFORE}" upstream | awk '{print $3}')"
+                new_upstream="$(git ls-tree "${EVENT_AFTER}" upstream | awk '{print $3}')"
+
+                if [[ -z "${old_upstream}" || -z "${new_upstream}" ]]; then
+                  should_run=true
+                  reason="upstream pointer unavailable"
+                elif [[ "${old_upstream}" == "${new_upstream}" ]]; then
+                  reason="upstream pointer unchanged"
+                else
+                  upstream_url="$(git config -f .gitmodules --get submodule.upstream.url)"
+                  tmpdir="$(mktemp -d)"
+                  git -C "${tmpdir}" init --quiet
+                  git -C "${tmpdir}" remote add origin "${upstream_url}"
+                  git -C "${tmpdir}" fetch --quiet --no-tags --filter=blob:none origin "${old_upstream}" "${new_upstream}"
+                  changed_files="$(git -C "${tmpdir}" diff --name-only "${old_upstream}" "${new_upstream}")"
+
+                  if printf '%s\n' "${changed_files}" | grep -Eq "${dependency_pattern}"; then
+                    should_run=true
+                    reason="dependency manifest changed"
+                    {
+                      echo "### Dependency-CAS rolling detector"
+                      echo
+                      echo "Changed dependency files:"
+                      printf '%s\n' "${changed_files}" | grep -E "${dependency_pattern}" | sed 's/^/- /'
+                    } >> "${GITHUB_STEP_SUMMARY}"
+                  else
+                    reason="upstream changed without dependency manifest changes"
+                  fi
+                fi
+              fi
+              ;;
+            *)
+              echo "Unknown dependency_cas mode: ${DEPENDENCY_CAS_MODE}" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "should_run=${should_run}" >> "${GITHUB_OUTPUT}"
+          echo "reason=${reason}" >> "${GITHUB_OUTPUT}"
+          echo "Dependency-CAS rolling dispatch: ${should_run} (${reason})" >> "${GITHUB_STEP_SUMMARY}"
+
+  dispatch-docker:
+    name: Dispatch Docker rolling benchmark pair
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_docker }}
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch AC rolling lane
@@ -50,3 +146,30 @@ jobs:
           -f blob_download_concurrency="${{ inputs.blob_download_concurrency || '' }}"
           -f blob_prefetch_concurrency="${{ inputs.blob_prefetch_concurrency || '' }}"
           -f oci_stream_through_min_bytes="${{ inputs.oci_stream_through_min_bytes || '' }}"
+
+  dispatch-dependency-cas:
+    name: Dispatch dependency-CAS rolling set
+    needs: dependency-changes
+    if: ${{ needs.dependency-changes.outputs.should_run == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch AC dependency rolling lane
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run "discourse-dependency-cas-actions-cache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f cache_lane=rolling
+
+      - name: Dispatch package-CAS rolling lane
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run "discourse-dependency-cas-boringcache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
+          -f cache_lane=rolling
+          -f layout=package-cas
+
+      - name: Dispatch archive-control rolling lane
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run "discourse-dependency-cas-boringcache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
+          -f cache_lane=rolling
+          -f layout=archive-control
