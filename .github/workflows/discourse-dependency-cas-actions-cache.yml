@@ -1,0 +1,241 @@
+name: "Discourse Dependency Cache - Actions Cache"
+run-name: >-
+  ${{ format('Dependency AC {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_lane:
+        description: "Benchmark lane"
+        required: false
+        type: choice
+        default: fresh
+        options:
+          - fresh
+          - rolling
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  BENCHMARK_ID: discourse-deps
+  CACHE_LANE: ${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  BUNDLE_PATH: vendor/bundle
+
+jobs:
+  seed:
+    name: Seed dependency cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      cache_key: ${{ steps.scope.outputs.cache_key }}
+      cache_scope: ${{ steps.scope.outputs.cache_scope }}
+      restore_seconds: ${{ steps.restore.outputs.seconds }}
+      restore_hit: ${{ steps.restore.outputs.cache_hit }}
+      install_seconds: ${{ steps.install.outputs.seconds }}
+      save_seconds: ${{ steps.save.outputs.seconds }}
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Checkout pinned upstream submodules shallowly
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+
+      - name: Prepare benchmark source tree
+        run: ./scripts/prepare-source.sh base
+
+      - name: Install system packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq-dev libyaml-dev
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          working-directory: upstream
+          bundler-cache: false
+
+      - name: Prepare dependency cache scope
+        id: scope
+        run: |
+          set -euo pipefail
+          ref_slug="$(printf '%s' "${GITHUB_REF_NAME}" | tr -c 'A-Za-z0-9._-' '-')"
+          ref_slug="${ref_slug#-}"
+          ref_slug="${ref_slug%-}"
+          ref_slug="${ref_slug:-main}"
+          if [[ "${CACHE_LANE}" == "rolling" ]]; then
+            cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-actions-cache"
+          else
+            cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-actions-cache"
+          fi
+          cache_key="bundler-${cache_scope}-ubuntu-24-x86_64"
+          echo "cache_scope=${cache_scope}" >> "${GITHUB_OUTPUT}"
+          echo "cache_key=${cache_key}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure Bundler
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          bundle config set path vendor/bundle
+
+      - name: Mark restore start
+        id: restore_start
+        run: echo "started_at=$(date +%s)" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore dependency cache
+        id: cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: upstream/vendor/bundle
+          key: ${{ steps.scope.outputs.cache_key }}
+
+      - name: Record restore timing
+        id: restore
+        run: |
+          set -euo pipefail
+          seconds="$(( $(date +%s) - ${{ steps.restore_start.outputs.started_at }} ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+          echo "cache_hit=${{ steps.cache_restore.outputs.cache-hit }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Bundle install
+        id: install
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          bundle install --jobs 4 --retry 3
+          bundle check
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Mark save start
+        id: save_start
+        run: echo "started_at=$(date +%s)" >> "${GITHUB_OUTPUT}"
+
+      - name: Save dependency cache
+        id: cache_save
+        uses: actions/cache/save@v4
+        with:
+          path: upstream/vendor/bundle
+          key: ${{ steps.scope.outputs.cache_key }}
+
+      - name: Record save timing
+        id: save
+        run: |
+          set -euo pipefail
+          seconds="$(( $(date +%s) - ${{ steps.save_start.outputs.started_at }} ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write seed summary
+        run: |
+          {
+            echo "### Discourse dependency cache seed"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---:|"
+            echo "| Backend | Actions Cache |"
+            echo "| Lane | ${CACHE_LANE} |"
+            echo "| Scope | ${{ steps.scope.outputs.cache_scope }} |"
+            echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
+            echo "| Restore hit | ${{ steps.restore.outputs.cache_hit || 'false' }} |"
+            echo "| Bundle install seconds | ${{ steps.install.outputs.seconds }} |"
+            echo "| Save seconds | ${{ steps.save.outputs.seconds }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  warm-restore:
+    name: Warm dependency restore
+    if: ${{ inputs.cache_lane != 'rolling' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: seed
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Checkout pinned upstream submodules shallowly
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+
+      - name: Prepare benchmark source tree
+        run: ./scripts/prepare-source.sh base
+
+      - name: Install system packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq-dev libyaml-dev
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          working-directory: upstream
+          bundler-cache: false
+
+      - name: Configure Bundler
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          bundle config set path vendor/bundle
+
+      - name: Mark restore start
+        id: restore_start
+        run: echo "started_at=$(date +%s)" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore dependency cache
+        id: cache_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: upstream/vendor/bundle
+          key: ${{ needs.seed.outputs.cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Record restore timing
+        id: restore
+        run: |
+          set -euo pipefail
+          seconds="$(( $(date +%s) - ${{ steps.restore_start.outputs.started_at }} ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+          echo "cache_hit=${{ steps.cache_restore.outputs.cache-hit }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify restored bundle
+        id: verify
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          start="$(date +%s)"
+          bundle check || bundle install --jobs 4 --retry 3
+          seconds="$(( $(date +%s) - start ))"
+          echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
+      - name: Write warm summary
+        run: |
+          {
+            echo "### Discourse dependency cache warm restore"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---:|"
+            echo "| Backend | Actions Cache |"
+            echo "| Scope | ${{ needs.seed.outputs.cache_scope }} |"
+            echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
+            echo "| Restore hit | ${{ steps.restore.outputs.cache_hit }} |"
+            echo "| Verify seconds | ${{ steps.verify.outputs.seconds }} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
