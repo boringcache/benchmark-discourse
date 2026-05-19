@@ -9,20 +9,20 @@ on:
         type: boolean
         default: true
       run_dependency_cas:
-        description: "Dispatch the AC/BC dependency CAS rolling benchmark set"
+        description: "Dispatch the GitHub Actions Cache/BoringCache dependency CAS rolling benchmark set"
         required: false
         type: boolean
         default: true
       blob_download_concurrency:
-        description: "Optional BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY override for the BC run"
+        description: "Optional BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY override for the BoringCache run"
         required: false
         type: string
       blob_prefetch_concurrency:
-        description: "Optional BORINGCACHE_BLOB_PREFETCH_CONCURRENCY override for the BC run"
+        description: "Optional BORINGCACHE_BLOB_PREFETCH_CONCURRENCY override for the BoringCache run"
         required: false
         type: string
       oci_stream_through_min_bytes:
-        description: "Optional BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES for Docker/OCI BC runs"
+        description: "Optional BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES for Docker/OCI BoringCache runs"
         required: false
         type: string
   push:
@@ -47,12 +47,12 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_docker }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch AC rolling lane
+      - name: Dispatch GitHub Actions Cache rolling lane
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run "discourse-docker-actions-cache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f cache_lane=rolling
 
-      - name: Dispatch BC rolling lane
+      - name: Dispatch BoringCache rolling lane
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
@@ -63,16 +63,16 @@ jobs:
           -f oci_stream_through_min_bytes="${{ inputs.oci_stream_through_min_bytes || '' }}"
 
   dispatch-dependency-cas:
-    name: Dispatch AC/BC dependency CAS rolling set
+    name: Dispatch GitHub Actions Cache/BoringCache dependency CAS rolling set
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_dependency_cas }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch AC dependency CAS rolling lane
+      - name: Dispatch GitHub Actions Cache dependency CAS rolling lane
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run "discourse-dependency-cas-actions-cache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f cache_lane=rolling
 
-      - name: Dispatch BC package-CAS rolling lane
+      - name: Dispatch BoringCache package-CAS rolling lane
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
@@ -80,7 +80,7 @@ jobs:
           -f cache_lane=rolling
           -f layout=package-cas
 
-      - name: Dispatch BC archive-control rolling lane
+      - name: Dispatch BoringCache archive-control rolling lane
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-

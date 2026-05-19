@@ -21,7 +21,7 @@
 #       rolling cache-bootstrap/update diagnostics (legacy rolling_reseed/steady_state_candidate),
 #       fresh-warm cache-import-not-ok validity gating.
 #
-#   - 675-line variant (discourse, mastodon, posthog)
+#   - 675-line variant (mastodon, posthog)
 #       adds tiny-metadata-churn distinction inside the rolling bootstrap
 #       classifier (legacy rolling_reseed_kind, tiny_metadata_churn) plus
 #       BENCHMARK_TINY_METADATA_CHURN_MAX_BLOBS / _MAX_BYTES knobs.
@@ -627,7 +627,7 @@ infer_default_launch_context() {
 
   if [[ -z "$mode" ]]; then
     case "$benchmark" in
-      *hugo*|*immich*|*discourse*|*mastodon*|*posthog*)
+      *hugo*|*immich*|*mastodon*|*posthog*)
         mode="docker"
         ;;
       *grpc*|*bazel*)
@@ -1084,6 +1084,16 @@ comparison_header_label() {
   esac
 }
 
+strategy_label() {
+  case "$1" in
+    actions-cache) echo "GitHub Actions Cache" ;;
+    boringcache) echo "BoringCache" ;;
+    depot-cache) echo "Depot Cache" ;;
+    buildbuddy-cache) echo "BuildBuddy Cache" ;;
+    *) echo "$1" ;;
+  esac
+}
+
 mkdir -p "$output_dir"
 json_path="$output_dir/${benchmark}-${strategy}-${lane}.json"
 md_path="$output_dir/${benchmark}-${strategy}-${lane}.md"
@@ -1091,11 +1101,13 @@ generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 lane_label_value="$(lane_label "$lane")"
 first_build_label_value="$(first_build_label "$lane")"
 comparison_header_label_value="$(comparison_header_label "$lane")"
+strategy_label_value="$(strategy_label "$strategy")"
 
 cat > "$json_path" <<JSON
 {
   "benchmark": "$benchmark",
   "strategy": "$strategy",
+  "strategy_label": "$strategy_label_value",
   "lane": "$lane",
   "lane_label": "$lane_label_value",
   "first_build_label": "$first_build_label_value",
@@ -1213,7 +1225,7 @@ cat > "$json_path" <<JSON
 JSON
 
 {
-  echo "## ${benchmark} (${strategy}, ${lane_label_value})"
+  echo "## ${benchmark} (${strategy_label_value}, ${lane_label_value})"
   echo ""
   echo "| Phase | Time | ${comparison_header_label_value} |"
   echo "|-------|------|---------|"

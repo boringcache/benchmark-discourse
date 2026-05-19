@@ -1,6 +1,6 @@
 name: "Discourse Dependency CAS - BoringCache"
 run-name: >-
-  ${{ format('BC Dependency CAS {0} ({1}) | {2}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas', github.ref_name) }}
+  ${{ format('BoringCache Dependency CAS {0} ({1}) | {2}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas', github.ref_name) }}
 
 on:
   workflow_dispatch:
@@ -40,7 +40,7 @@ env:
 
 jobs:
   seed:
-    name: ${{ format('Seed BC dependency cache ({0})', inputs.layout || 'package-cas') }}
+    name: ${{ format('Seed BoringCache dependency cache ({0})', inputs.layout || 'package-cas') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -172,7 +172,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   warm-restore:
-    name: Warm BC dependency restore
+    name: Warm BoringCache dependency restore
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_lane != 'rolling' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90

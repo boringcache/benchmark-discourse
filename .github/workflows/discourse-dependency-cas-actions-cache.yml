@@ -1,6 +1,6 @@
-name: "Discourse Dependency CAS - Actions Cache"
+name: "Discourse Dependency CAS - GitHub Actions Cache"
 run-name: >-
-  ${{ format('AC Dependency CAS {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
+  ${{ format('GitHub Actions Cache Dependency CAS {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ env:
 
 jobs:
   seed:
-    name: Seed AC dependency cache
+    name: Seed GitHub Actions Cache dependency cache
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -160,7 +160,7 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "|---|---:|"
-            echo "| Backend | Actions Cache |"
+            echo "| Backend | GitHub Actions Cache |"
             echo "| Lane | ${CACHE_LANE} |"
             echo "| Scope | ${{ steps.scope.outputs.cache_scope }} |"
             echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
@@ -170,7 +170,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   warm-restore:
-    name: Warm AC dependency restore
+    name: Warm GitHub Actions Cache dependency restore
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_lane != 'rolling' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -247,7 +247,7 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "|---|---:|"
-            echo "| Backend | Actions Cache |"
+            echo "| Backend | GitHub Actions Cache |"
             echo "| Scope | ${{ needs.seed.outputs.cache_scope }} |"
             echo "| Restore seconds | ${{ steps.restore.outputs.seconds }} |"
             echo "| Restore hit | ${{ steps.restore.outputs.cache_hit }} |"
