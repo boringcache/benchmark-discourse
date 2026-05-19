@@ -1,6 +1,6 @@
-name: "Discourse Dependency Cache - Actions Cache"
+name: "Discourse Dependency CAS - Actions Cache"
 run-name: >-
-  ${{ format('Dependency AC {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
+  ${{ format('AC Dependency CAS {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
 
 on:
   workflow_dispatch:
@@ -13,6 +13,8 @@ on:
         options:
           - fresh
           - rolling
+  schedule:
+    - cron: "54 3 * * 0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
@@ -29,7 +31,7 @@ env:
 
 jobs:
   seed:
-    name: Seed dependency cache
+    name: Seed AC dependency cache
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -78,12 +80,23 @@ jobs:
           ref_slug="${ref_slug:-main}"
           if [[ "${CACHE_LANE}" == "rolling" ]]; then
             cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-actions-cache"
+            cache_key_prefix="bundler-${cache_scope}-ubuntu-24-x86_64"
+            cache_key="${cache_key_prefix}-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+            cache_restore_keys="${cache_key_prefix}-"
           else
             cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-actions-cache"
+            cache_key_prefix="bundler-${cache_scope}-ubuntu-24-x86_64"
+            cache_key="${cache_key_prefix}"
+            cache_restore_keys=""
           fi
-          cache_key="bundler-${cache_scope}-ubuntu-24-x86_64"
           echo "cache_scope=${cache_scope}" >> "${GITHUB_OUTPUT}"
           echo "cache_key=${cache_key}" >> "${GITHUB_OUTPUT}"
+          echo "cache_key_prefix=${cache_key_prefix}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "cache_restore_keys<<EOF"
+            echo "${cache_restore_keys}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Configure Bundler
         working-directory: upstream
@@ -101,6 +114,7 @@ jobs:
         with:
           path: upstream/vendor/bundle
           key: ${{ steps.scope.outputs.cache_key }}
+          restore-keys: ${{ steps.scope.outputs.cache_restore_keys }}
 
       - name: Record restore timing
         id: restore
@@ -156,8 +170,8 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   warm-restore:
-    name: Warm dependency restore
-    if: ${{ inputs.cache_lane != 'rolling' }}
+    name: Warm AC dependency restore
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_lane != 'rolling' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     needs: seed

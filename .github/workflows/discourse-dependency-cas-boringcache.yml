@@ -1,6 +1,6 @@
 name: "Discourse Dependency CAS - BoringCache"
 run-name: >-
-  ${{ format('Dependency CAS {0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.ref_name) }}
+  ${{ format('BC Dependency CAS {0} ({1}) | {2}', github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh', github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas', github.ref_name) }}
 
 on:
   workflow_dispatch:
@@ -21,6 +21,8 @@ on:
         options:
           - package-cas
           - archive-control
+  schedule:
+    - cron: "54 3 * * 0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}-${{ github.event_name == 'workflow_dispatch' && inputs.layout || 'package-cas' }}
@@ -38,7 +40,7 @@ env:
 
 jobs:
   seed:
-    name: ${{ format('Seed dependency cache ({0})', inputs.layout || 'package-cas') }}
+    name: ${{ format('Seed BC dependency cache ({0})', inputs.layout || 'package-cas') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -170,8 +172,8 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
   warm-restore:
-    name: Warm dependency restore
-    if: ${{ inputs.cache_lane != 'rolling' }}
+    name: Warm BC dependency restore
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.cache_lane != 'rolling' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     needs: seed
