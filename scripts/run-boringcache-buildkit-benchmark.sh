@@ -304,6 +304,13 @@ write_build_diagnostics() {
 
 attempt=1
 while true; do
+  docker_extra_args=()
+  if [[ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]]; then
+    while IFS= read -r arg; do
+      [[ -n "$arg" ]] && docker_extra_args+=("$arg")
+    done <<< "$DOCKER_BUILD_EXTRA_ARGS"
+  fi
+
   cache_args=()
   if [[ "$mode" == "full" ]]; then
     [[ -n "${CACHE_FROM:-}" ]] && cache_args+=(--cache-from "$CACHE_FROM")
@@ -343,6 +350,7 @@ while true; do
     --file "$DOCKERFILE_PATH" \
     --tag "$IMAGE_TAG" \
     --progress=plain \
+    "${docker_extra_args[@]}" \
     "${cache_args[@]}" \
     "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
   status=${PIPESTATUS[0]}

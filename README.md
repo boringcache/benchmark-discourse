@@ -14,6 +14,7 @@ This repo exists separately from the central benchmarks publisher so Discourse c
 - upstream app source lives in the pinned `upstream/` submodule
 - the Discourse development Dockerfile source lives in the pinned `docker-upstream/` submodule
 - workflows build `benchmark/discourse-dev.Dockerfile` with this benchmark repo as the Docker context
+- image-factory workflows build selected `docker-upstream/image` targets from `discourse/discourse_docker`
 
 Pinned upstream source:
 
@@ -28,7 +29,13 @@ Discourse uses Docker through the `discourse/discourse_docker` repo rather than 
 
 Fresh lane runs a no-prior-cache cold build plus one warm rerun on the same pinned source tree. Fresh samples run weekly and can also be dispatched manually. Rolling lane records the upstream commit build as-is after each upstream sync against the prior rolling cache and skips `warm1`.
 
-Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair and the dependency cache set on every upstream sync commit. The dependency set includes actions/cache, BoringCache package CAS, and the BoringCache archive-control lane.
+The benchmark has three meaningful surfaces:
+
+- `discourse-docker`: development Docker image shaped around the Discourse app source.
+- `discourse-base-deps`, `discourse-base-web-only`, and `discourse-base-release`: selected `discourse_docker` base image targets.
+- `discourse-test-release`: `discourse_docker` test-image release target.
+
+Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair, the image-factory Docker pair, and the dependency cache set on every upstream sync commit. The dependency set includes actions/cache, BoringCache package CAS, and the BoringCache archive-control lane.
 
 BoringCache uses the outer BuildKit registry/OCI cache path only. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit.
 

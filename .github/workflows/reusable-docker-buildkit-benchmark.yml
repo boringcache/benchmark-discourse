@@ -24,6 +24,10 @@ on:
         required: false
         type: string
         default: upstream
+      docker_build_args:
+        required: false
+        type: string
+        default: ''
       image_tag:
         required: true
         type: string
@@ -66,6 +70,7 @@ env:
   BENCHMARK_ID: ${{ inputs.benchmark_id }}
   BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace || github.repository }}
   CACHE_LANE: ${{ inputs.cache_lane }}
+  DOCKER_BUILD_EXTRA_ARGS: ${{ inputs.docker_build_args }}
   BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY: ${{ inputs.blob_download_concurrency }}
   BORINGCACHE_BLOB_PREFETCH_CONCURRENCY: ${{ inputs.blob_prefetch_concurrency }}
   BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES: ${{ inputs.oci_stream_through_min_bytes }}
@@ -314,9 +319,16 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
           DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
           BENCHMARK_DOCKER_CONTEXT: ${{ inputs.docker_context }}
+          DOCKER_BUILD_EXTRA_ARGS: ${{ inputs.docker_build_args }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          docker_extra_args=()
+          if [[ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]]; then
+            while IFS= read -r arg; do
+              [[ -n "$arg" ]] && docker_extra_args+=("$arg")
+            done <<< "$DOCKER_BUILD_EXTRA_ARGS"
+          fi
 
           if [[ "${{ inputs.strategy }}" == "boringcache" ]]; then
             metrics_file="${RUNNER_TEMP}/cold-build-metrics.env"
@@ -403,6 +415,7 @@ jobs:
                 --file ${{ inputs.dockerfile_path }} \
                 --tag ${{ inputs.image_tag }} \
                 --progress=plain \
+                "${docker_extra_args[@]}" \
                 "${build_cache_args[@]}" \
                 ${{ inputs.docker_context }} 2>&1 | tee "$build_log"
               status=${PIPESTATUS[0]}
@@ -594,8 +607,15 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
           DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
           BENCHMARK_DOCKER_CONTEXT: ${{ inputs.docker_context }}
+          DOCKER_BUILD_EXTRA_ARGS: ${{ inputs.docker_build_args }}
         run: |
           set -euo pipefail
+          docker_extra_args=()
+          if [[ -n "${DOCKER_BUILD_EXTRA_ARGS:-}" ]]; then
+            while IFS= read -r arg; do
+              [[ -n "$arg" ]] && docker_extra_args+=("$arg")
+            done <<< "$DOCKER_BUILD_EXTRA_ARGS"
+          fi
 
           if [[ "${{ inputs.strategy }}" == "boringcache" ]]; then
             metrics_file="${RUNNER_TEMP}/warm1-build-metrics.env"
@@ -649,6 +669,7 @@ jobs:
                 --file ${{ inputs.dockerfile_path }} \
                 --tag ${{ inputs.image_tag }} \
                 --progress=plain \
+                "${docker_extra_args[@]}" \
                 --cache-from "type=gha,scope=${CACHE_SCOPE}" \
                 ${{ inputs.docker_context }} 2>&1 | tee "$build_log"
               status=${PIPESTATUS[0]}

@@ -1,0 +1,86 @@
+name: "Discourse Image Factory - GitHub Actions Cache"
+run-name: >-
+  ${{ format('{0} | {1}', github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling' && 'GitHub Actions Cache Rolling' || 'GitHub Actions Cache Fresh', github.event_name == 'schedule' && 'Weekly fresh benchmark' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_lane:
+        description: "Benchmark lane"
+        required: false
+        type: choice
+        default: fresh
+        options:
+          - fresh
+          - rolling
+  schedule:
+    - cron: "37 3 * * 0"
+  pull_request:
+    paths:
+      - ".gitmodules"
+      - ".github/workflows/discourse-image-factory-boringcache.yml"
+      - ".github/workflows/discourse-image-factory-actions-cache.yml"
+      - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
+      - "README.md"
+      - "benchmark/**"
+      - "scenarios/**"
+      - "scripts/**"
+      - "upstream"
+      - "docker-upstream"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - benchmark_id: discourse-base-deps
+            dockerfile_path: docker-upstream/image/base/Dockerfile
+            docker_context: docker-upstream/image/base
+            image_tag: discourse-base-deps-benchmark:latest
+            docker_build_args: |
+              --target=discourse_dependencies
+          - benchmark_id: discourse-base-web-only
+            dockerfile_path: docker-upstream/image/base/Dockerfile
+            docker_context: docker-upstream/image/base
+            image_tag: discourse-base-web-only-benchmark:latest
+            docker_build_args: |
+              --target=discourse_web_only
+              --build-arg=DISCOURSE_BRANCH=main
+          - benchmark_id: discourse-base-release
+            dockerfile_path: docker-upstream/image/base/Dockerfile
+            docker_context: docker-upstream/image/base
+            image_tag: discourse-base-release-benchmark:latest
+            docker_build_args: |
+              --target=discourse_release
+              --build-arg=DISCOURSE_BRANCH=main
+          - benchmark_id: discourse-test-release
+            dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
+            docker_context: docker-upstream/image/discourse_test
+            image_tag: discourse-test-release-benchmark:latest
+            docker_build_args: |
+              --target=release
+              --build-arg=from_tag=release
+    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
+    with:
+      strategy: actions-cache
+      cache_lane: ${{ github.event_name == 'workflow_dispatch' && inputs.cache_lane || 'fresh' }}
+      benchmark_id: ${{ matrix.image.benchmark_id }}
+      project_repo: discourse/discourse_docker
+      dockerfile_path: ${{ matrix.image.dockerfile_path }}
+      docker_context: ${{ matrix.image.docker_context }}
+      docker_build_args: ${{ matrix.image.docker_build_args }}
+      image_tag: ${{ matrix.image.image_tag }}
+      benchmark_workspace: ${{ github.repository }}
+    secrets: inherit
+    permissions:
+      contents: read
+      actions: write
