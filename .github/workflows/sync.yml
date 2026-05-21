@@ -33,16 +33,29 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --remote --merge upstream docker-upstream
 
+          github_repo_slug() {
+            local url="$1"
+            url="${url%/}"
+            url="${url#https://github.com/}"
+            url="${url#git@github.com:}"
+            url="${url#ssh://git@github.com/}"
+            url="${url%.git}"
+            url="${url%/}"
+            printf '%s' "$url"
+          }
+
           if git diff --quiet --submodule=short; then
             echo "No upstream changes"
             exit 0
           fi
 
           upstream_url="$(cd upstream && git remote get-url origin)"
-          upstream_sha="$(cd upstream && git rev-parse HEAD)"
+          upstream_repo="$(github_repo_slug "$upstream_url")"
+          upstream_sha="$(cd upstream && git rev-parse --short=7 HEAD)"
           docker_upstream_url="$(cd docker-upstream && git remote get-url origin)"
-          docker_upstream_sha="$(cd docker-upstream && git rev-parse HEAD)"
+          docker_upstream_repo="$(github_repo_slug "$docker_upstream_url")"
+          docker_upstream_sha="$(cd docker-upstream && git rev-parse --short=7 HEAD)"
 
           git add upstream docker-upstream
-          git commit -m "Update upstreams to ${upstream_url}/commit/${upstream_sha} and ${docker_upstream_url}/commit/${docker_upstream_sha}"
+          git commit -m "Update upstreams to ${upstream_repo}@${upstream_sha} and ${docker_upstream_repo}@${docker_upstream_sha}"
           git push origin HEAD:main
