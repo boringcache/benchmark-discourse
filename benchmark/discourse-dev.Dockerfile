@@ -51,7 +51,8 @@ USER discourse
 
 RUN --mount=type=bind,src=/repo,from=repo-fetcher,target=/tmp/discourse-clone,readwrite \
     cd /tmp/discourse-clone \
-    && bundle install --deployment \
+    && bundle config set deployment true \
+    && bundle install \
     && rm -rf /home/discourse/.bundle/gems/ruby/*/cache/*
 
 RUN --mount=type=bind,src=/repo,from=repo-fetcher,target=/tmp/discourse-clone,readwrite \
