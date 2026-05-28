@@ -71,7 +71,7 @@ jobs:
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-deps-benchmark:latest
             docker_build_args: |
-              --target=discourse_dependencies
+              --target=discourse-build-base
           - benchmark_id: discourse-base-web-only
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -84,7 +84,7 @@ jobs:
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-release-benchmark:latest
             docker_build_args: |
-              --target=discourse_release
+              --target=discourse-release
               --build-arg=DISCOURSE_BRANCH=main
           - benchmark_id: discourse-test-release
             dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
