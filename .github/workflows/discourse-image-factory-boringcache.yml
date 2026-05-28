@@ -77,7 +77,7 @@ jobs:
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-web-only-benchmark:latest
             docker_build_args: |
-              --target=discourse_web_only
+              --target=discourse-web-only
               --build-arg=DISCOURSE_BRANCH=main
           - benchmark_id: discourse-base-release
             dockerfile_path: docker-upstream/image/base/Dockerfile
