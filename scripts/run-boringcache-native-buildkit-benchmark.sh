@@ -265,6 +265,7 @@ if [[ -n "${BENCHMARK_METRICS_OUTPUT:-}" ]]; then
   write_metric docker_cache_import_seconds "$import_seconds"
   write_metric docker_cache_export_seconds "$final_publish_seconds"
   write_metric buildkit_backend native
+  write_metric native_tool_evidence "$native_tool_evidence_path"
   if [[ -s "$native_tool_evidence_path" ]] && command -v jq >/dev/null 2>&1; then
     write_metric oci_new_blob_count "$(jq -r '.publisher.final_publish_blob_count // empty' "$native_tool_evidence_path" 2>/dev/null || true)"
     write_metric oci_new_blob_bytes "$(jq -r '.publisher.final_publish_layer_bytes // empty' "$native_tool_evidence_path" 2>/dev/null || true)"
