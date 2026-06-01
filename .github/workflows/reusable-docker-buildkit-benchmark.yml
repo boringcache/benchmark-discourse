@@ -388,6 +388,11 @@ jobs:
             echo "build_seconds=$((end - start))" >> "$GITHUB_OUTPUT"
             if [[ -s "$metrics_file" ]]; then
               cat "$metrics_file" >> "$GITHUB_OUTPUT"
+              native_tool_evidence="$(grep "^native_tool_evidence=" "$metrics_file" | head -n1 | cut -d= -f2- || true)"
+              if [[ "$BUILDKIT_BACKEND" =~ ^(native|auto)$ && -n "$native_tool_evidence" && -s "$native_tool_evidence" ]]; then
+                mkdir -p benchmark-native-tool
+                cp "$native_tool_evidence" benchmark-native-tool/native-tool.json
+              fi
             fi
           else
             build_log="$(mktemp /tmp/${BENCHMARK_ID}-ac-seed.XXXXXX.log)"
@@ -495,6 +500,14 @@ jobs:
         with:
           name: benchmark-session-summary-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}
           path: benchmark-session-summary/benchmark-session-summary.json
+          if-no-files-found: ignore
+
+      - name: Upload native BuildKit evidence
+        if: inputs.strategy == 'boringcache' && (inputs.buildkit_backend == 'native' || inputs.buildkit_backend == 'auto') && always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-native-tool-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}-seed
+          path: benchmark-native-tool/native-tool.json
           if-no-files-found: ignore
 
   scenario-builds:
@@ -659,6 +672,11 @@ jobs:
             echo "build_seconds=$((end - start))" >> "$GITHUB_OUTPUT"
             if [[ -s "$metrics_file" ]]; then
               cat "$metrics_file" >> "$GITHUB_OUTPUT"
+              native_tool_evidence="$(grep "^native_tool_evidence=" "$metrics_file" | head -n1 | cut -d= -f2- || true)"
+              if [[ "$BUILDKIT_BACKEND" =~ ^(native|auto)$ && -n "$native_tool_evidence" && -s "$native_tool_evidence" ]]; then
+                mkdir -p benchmark-native-tool
+                cp "$native_tool_evidence" benchmark-native-tool/native-tool.json
+              fi
             fi
           else
             build_log="$(mktemp /tmp/${BENCHMARK_ID}-ac-warm1.XXXXXX.log)"
@@ -788,6 +806,14 @@ jobs:
           path: benchmark-phase/warm1.env
           if-no-files-found: error
 
+      - name: Upload native BuildKit evidence
+        if: inputs.strategy == 'boringcache' && (inputs.buildkit_backend == 'native' || inputs.buildkit_backend == 'auto')
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-native-tool-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}-warm1
+          path: benchmark-native-tool/native-tool.json
+          if-no-files-found: ignore
+
   finalize-benchmark:
     name: Finalize benchmark artifacts
     needs: [seed-cache, scenario-builds]
@@ -820,12 +846,28 @@ jobs:
           merge-multiple: true
 
       - name: Download BoringCache session summary
-        if: inputs.strategy == 'boringcache'
+        if: inputs.strategy == 'boringcache' && (inputs.buildkit_backend == 'registry' || inputs.buildkit_backend == 'auto')
         uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: benchmark-session-summary-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}
           path: benchmark-session-summary
+
+      - name: Download native BuildKit seed evidence
+        if: inputs.strategy == 'boringcache' && (inputs.buildkit_backend == 'native' || inputs.buildkit_backend == 'auto') && inputs.cache_lane == 'rolling'
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: benchmark-native-tool-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}-seed
+          path: benchmark-native-tool
+
+      - name: Download native BuildKit warm evidence
+        if: inputs.strategy == 'boringcache' && (inputs.buildkit_backend == 'native' || inputs.buildkit_backend == 'auto') && inputs.cache_lane != 'rolling'
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: benchmark-native-tool-${{ inputs.benchmark_id }}-boringcache-${{ inputs.cache_lane }}-warm1
+          path: benchmark-native-tool
 
       - name: Collect scenario timings
         if: ${{ inputs.cache_lane != 'rolling' }}
@@ -878,7 +920,11 @@ jobs:
           tags_csv="${{ needs.seed-cache.outputs.tags_csv }}"
           mkdir -p benchmark-storage
           breakdown_path="benchmark-storage/boringcache-storage-breakdown.json"
-          bytes="$(BORINGCACHE_STORAGE_BREAKDOWN_PATH="$breakdown_path" .benchmark-config/scripts/sum-boringcache-check-sizes.sh "$BENCHMARK_WORKSPACE" "$tags_csv")"
+          exact_tags=""
+          if [[ "$BUILDKIT_BACKEND" =~ ^(native|auto)$ ]]; then
+            exact_tags="$tags_csv"
+          fi
+          bytes="$(BORINGCACHE_STORAGE_BREAKDOWN_PATH="$breakdown_path" BORINGCACHE_EXACT_TAGS="$exact_tags" .benchmark-config/scripts/sum-boringcache-check-sizes.sh "$BENCHMARK_WORKSPACE" "$tags_csv")"
           echo "bytes=${bytes}" >> "$GITHUB_OUTPUT"
           echo "breakdown_path=${breakdown_path}" >> "$GITHUB_OUTPUT"
 
