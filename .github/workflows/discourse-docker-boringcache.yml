@@ -21,7 +21,7 @@ on:
         options:
           - both
           - registry
-          - native
+          - auto
       cli_ref:
         description: "Internal benchmark diagnostic only: build this boringcache/cli ref instead of using the released CLI"
         required: false
