@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       run_docker:
-        description: "Dispatch the Docker rolling benchmark pair"
+        description: "Dispatch the Docker rolling benchmark"
         required: false
         type: boolean
         default: true
       run_image_factory:
-        description: "Dispatch the discourse_docker image-factory rolling benchmark pair"
+        description: "Dispatch the discourse_docker image-factory rolling benchmark"
         required: false
         type: boolean
         default: true
@@ -43,41 +43,29 @@ permissions:
 
 jobs:
   dispatch-docker:
-    name: Dispatch Docker rolling benchmark pair
+    name: Dispatch Docker rolling benchmark
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_docker }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch GitHub Actions Cache rolling lane
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run "discourse-docker-actions-cache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f cache_lane=rolling
-
-      - name: Dispatch BoringCache rolling lane
+      - name: Dispatch Docker rolling benchmark
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh workflow run "discourse-docker-boringcache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
-          -f cache_lane=rolling
+          gh workflow run "discourse-docker-benchmark.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
           -f blob_download_concurrency="${{ inputs.blob_download_concurrency || '' }}"
           -f blob_prefetch_concurrency="${{ inputs.blob_prefetch_concurrency || '' }}"
           -f oci_stream_through_min_bytes="${{ inputs.oci_stream_through_min_bytes || '' }}"
 
   dispatch-image-factory:
-    name: Dispatch image-factory rolling benchmark pair
+    name: Dispatch image-factory rolling benchmark
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_image_factory }}
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch GitHub Actions Cache image-factory rolling lane
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run "discourse-image-factory-actions-cache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}" -f cache_lane=rolling
-
-      - name: Dispatch BoringCache image-factory rolling lane
+      - name: Dispatch image-factory rolling benchmark
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh workflow run "discourse-image-factory-boringcache.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
-          -f cache_lane=rolling
+          gh workflow run "discourse-image-factory-benchmark.yml" --repo "$GITHUB_REPOSITORY" --ref "${{ github.ref_name }}"
           -f blob_download_concurrency="${{ inputs.blob_download_concurrency || '' }}"
           -f blob_prefetch_concurrency="${{ inputs.blob_prefetch_concurrency || '' }}"
           -f oci_stream_through_min_bytes="${{ inputs.oci_stream_through_min_bytes || '' }}"
