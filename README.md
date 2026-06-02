@@ -35,7 +35,7 @@ The benchmark has three meaningful surfaces:
 - `discourse-base-deps`, `discourse-base-web-only`, and `discourse-base-release`: selected `discourse_docker` base image targets.
 - `discourse-test-release`: `discourse_docker` test-image release target.
 
-Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair, the image-factory Docker pair, and the dependency cache set on every upstream sync commit. The dependency set includes actions/cache, BoringCache package CAS, and the BoringCache archive-control lane.
+Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair and the image-factory Docker pair on every upstream sync commit. The retired dependency-directory package-CAS benchmark set has been removed.
 
 BoringCache uses the outer BuildKit registry/OCI cache path only. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit.
 
