@@ -46,21 +46,21 @@ permissions:
 
 jobs:
   github-actions-cache:
-    name: ${{ format('Build {0} with GitHub Actions Cache', matrix.image.label) }}
+    name: ${{ format('GHA / {0}', matrix.image.label) }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         image:
-          - label: base deps
+          - label: Base deps
             benchmark_id: discourse-base-deps
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-deps-benchmark:latest
             docker_build_args: |
               --target=discourse-build-base
-          - label: base web only
+          - label: Base web
             benchmark_id: discourse-base-web-only
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -68,7 +68,7 @@ jobs:
             docker_build_args: |
               --target=discourse-web-only
               --build-arg=DISCOURSE_BRANCH=main
-          - label: base release
+          - label: Base release
             benchmark_id: discourse-base-release
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -76,7 +76,7 @@ jobs:
             docker_build_args: |
               --target=discourse-release
               --build-arg=DISCOURSE_BRANCH=main
-          - label: test release
+          - label: Test release
             benchmark_id: discourse-test-release
             dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
             docker_context: docker-upstream/image/discourse_test
@@ -108,21 +108,21 @@ jobs:
           project_ref_submodule: docker-upstream
 
   boringcache-oci:
-    name: ${{ format('Build {0} with BoringCache OCI', matrix.image.label) }}
+    name: ${{ format('BC / {0}', matrix.image.label) }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         image:
-          - label: base deps
+          - label: Base deps
             benchmark_id: discourse-base-deps
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-deps-benchmark:latest
             docker_build_args: |
               --target=discourse-build-base
-          - label: base web only
+          - label: Base web
             benchmark_id: discourse-base-web-only
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -130,7 +130,7 @@ jobs:
             docker_build_args: |
               --target=discourse-web-only
               --build-arg=DISCOURSE_BRANCH=main
-          - label: base release
+          - label: Base release
             benchmark_id: discourse-base-release
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -138,7 +138,7 @@ jobs:
             docker_build_args: |
               --target=discourse-release
               --build-arg=DISCOURSE_BRANCH=main
-          - label: test release
+          - label: Test release
             benchmark_id: discourse-test-release
             dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
             docker_context: docker-upstream/image/discourse_test
@@ -180,21 +180,21 @@ jobs:
           project_ref_submodule: docker-upstream
 
   boringcache-auto:
-    name: ${{ format('Build {0} with BoringCache Auto', matrix.image.label) }}
+    name: ${{ format('BC auto / {0}', matrix.image.label) }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
         image:
-          - label: base deps
+          - label: Base deps
             benchmark_id: discourse-base-deps-auto
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-deps-benchmark:latest
             docker_build_args: |
               --target=discourse-build-base
-          - label: base web only
+          - label: Base web
             benchmark_id: discourse-base-web-only-auto
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -202,7 +202,7 @@ jobs:
             docker_build_args: |
               --target=discourse-web-only
               --build-arg=DISCOURSE_BRANCH=main
-          - label: base release
+          - label: Base release
             benchmark_id: discourse-base-release-auto
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
@@ -210,7 +210,7 @@ jobs:
             docker_build_args: |
               --target=discourse-release
               --build-arg=DISCOURSE_BRANCH=main
-          - label: test release
+          - label: Test release
             benchmark_id: discourse-test-release-auto
             dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
             docker_context: docker-upstream/image/discourse_test
