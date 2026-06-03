@@ -48,32 +48,37 @@ permissions:
 
 jobs:
   benchmark:
+    name: ${{ matrix.buildkit_backend == 'auto' && format('BC auto / {0}', matrix.image.label) || format('BC / {0}', matrix.image.label) }}
     strategy:
       fail-fast: false
       matrix:
         buildkit_backend: ${{ fromJSON((github.event_name == 'workflow_dispatch' && inputs.buildkit_backend == 'registry') && '["registry"]' || (github.event_name == 'workflow_dispatch' && inputs.buildkit_backend == 'auto') && '["auto"]' || '["registry","auto"]') }}
         image:
-          - benchmark_id: discourse-base-deps
+          - label: base deps
+            benchmark_id: discourse-base-deps
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-deps-benchmark:latest
             docker_build_args: |
               --target=discourse-build-base
-          - benchmark_id: discourse-base-web-only
+          - label: base web
+            benchmark_id: discourse-base-web-only
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-web-only-benchmark:latest
             docker_build_args: |
               --target=discourse-web-only
               --build-arg=DISCOURSE_BRANCH=main
-          - benchmark_id: discourse-base-release
+          - label: base release
+            benchmark_id: discourse-base-release
             dockerfile_path: docker-upstream/image/base/Dockerfile
             docker_context: docker-upstream/image/base
             image_tag: discourse-base-release-benchmark:latest
             docker_build_args: |
               --target=discourse-release
               --build-arg=DISCOURSE_BRANCH=main
-          - benchmark_id: discourse-test-release
+          - label: test release
+            benchmark_id: discourse-test-release
             dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
             docker_context: docker-upstream/image/discourse_test
             image_tag: discourse-test-release-benchmark:latest
