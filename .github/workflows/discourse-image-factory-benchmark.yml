@@ -93,7 +93,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build with GitHub Actions Cache
+      - name: GHA
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: actions-cache
@@ -158,7 +158,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build with BoringCache OCI
+      - name: BC
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -230,7 +230,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build with BoringCache Auto
+      - name: BC auto
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
