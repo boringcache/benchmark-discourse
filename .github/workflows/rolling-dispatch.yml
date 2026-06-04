@@ -2,17 +2,6 @@ name: "Rolling Benchmark Dispatch"
 
 on:
   workflow_dispatch:
-    inputs:
-      run_docker:
-        description: "Dispatch the Docker rolling benchmark"
-        required: false
-        type: boolean
-        default: true
-      run_image_factory:
-        description: "Dispatch the discourse_docker image-factory rolling benchmark"
-        required: false
-        type: boolean
-        default: true
   push:
     branches:
       - main
@@ -32,7 +21,6 @@ permissions:
 jobs:
   dispatch-docker:
     name: Dispatch Docker rolling benchmark
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_docker }}
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch Docker rolling benchmark
@@ -43,7 +31,6 @@ jobs:
 
   dispatch-image-factory:
     name: Dispatch image-factory rolling benchmark
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_image_factory }}
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch image-factory rolling benchmark
