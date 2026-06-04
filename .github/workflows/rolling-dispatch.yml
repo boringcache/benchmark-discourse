@@ -2,6 +2,7 @@ name: "Rolling Benchmark Dispatch"
 
 on:
   workflow_dispatch:
+    inputs:
       run_docker:
         description: "Dispatch the Docker rolling benchmark"
         required: false
