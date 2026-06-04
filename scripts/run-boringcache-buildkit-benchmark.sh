@@ -119,8 +119,8 @@ write_build_metrics() {
   if [[ -n "${BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES:-}" ]]; then
     echo "oci_stream_through_min_bytes=${BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES}" >> "$output_path"
   fi
-  if [[ "$backend" == "auto" ]]; then
-    echo "buildkit_backend=auto" >> "$output_path"
+  if [[ "$backend" == "native" ]]; then
+    echo "buildkit_backend=native" >> "$output_path"
     if [[ -s "$native_tool_evidence_path" ]]; then
       echo "native_tool_evidence=$native_tool_evidence_path" >> "$output_path"
       append_native_tool_metrics "$native_tool_evidence_path" || true
@@ -359,7 +359,7 @@ write_build_diagnostics() {
   } > "$output_path"
 }
 
-run_auto_build() {
+run_native_build() {
   local phase_hint="cold"
   if [[ "$mode" == "partial-warm" ]]; then
     phase_hint="warm"
@@ -371,7 +371,7 @@ run_auto_build() {
     boringcache docker
     --workspace "${BENCHMARK_WORKSPACE:?Set BENCHMARK_WORKSPACE}"
     --tag "${CACHE_SCOPE:?Set CACHE_SCOPE}"
-    --backend auto
+    --backend native
     --port "$proxy_port"
     --cache-mode max
     --no-platform
@@ -380,7 +380,7 @@ run_auto_build() {
     --metadata-hint "benchmark=${BENCHMARK_ID:-docker}"
     --metadata-hint "phase=${phase_hint}"
     --metadata-hint "lane=${CACHE_LANE:-fresh}"
-    --metadata-hint "backend=auto"
+    --metadata-hint "backend=native"
     --native-tool-evidence-json "$native_tool_evidence_path"
     --fail-on-cache-error
   )
@@ -462,8 +462,8 @@ while true; do
     exit 1
   fi
 
-  if [[ "$backend" == "auto" ]]; then
-    run_auto_build
+  if [[ "$backend" == "native" ]]; then
+    run_native_build
   else
     require_readable_cache_import
     start_proxy

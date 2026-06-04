@@ -278,8 +278,8 @@ jobs:
           submodules: "upstream docker-upstream"
           project_ref_submodule: docker-upstream
 
-  bc-auto-base-deps:
-    name: BC auto / base deps
+  bc-native-base-deps:
+    name: BC native / base deps
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -294,12 +294,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC auto
+      - name: BC native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: auto
-          benchmark_id: discourse-base-deps-auto
+          buildkit_backend: native
+          benchmark_id: discourse-base-deps-native
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
           docker_context: docker-upstream/image/base
@@ -311,8 +311,8 @@ jobs:
           submodules: "upstream docker-upstream"
           project_ref_submodule: docker-upstream
 
-  bc-auto-base-web:
-    name: BC auto / base web
+  bc-native-base-web:
+    name: BC native / base web
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -327,12 +327,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC auto
+      - name: BC native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: auto
-          benchmark_id: discourse-base-web-only-auto
+          buildkit_backend: native
+          benchmark_id: discourse-base-web-only-native
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
           docker_context: docker-upstream/image/base
@@ -345,8 +345,8 @@ jobs:
           submodules: "upstream docker-upstream"
           project_ref_submodule: docker-upstream
 
-  bc-auto-base-release:
-    name: BC auto / base release
+  bc-native-base-release:
+    name: BC native / base release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -361,12 +361,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC auto
+      - name: BC native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: auto
-          benchmark_id: discourse-base-release-auto
+          buildkit_backend: native
+          benchmark_id: discourse-base-release-native
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
           docker_context: docker-upstream/image/base
@@ -379,8 +379,8 @@ jobs:
           submodules: "upstream docker-upstream"
           project_ref_submodule: docker-upstream
 
-  bc-auto-test-release:
-    name: BC auto / test release
+  bc-native-test-release:
+    name: BC native / test release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -395,12 +395,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC auto
+      - name: BC native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: auto
-          benchmark_id: discourse-test-release-auto
+          buildkit_backend: native
+          benchmark_id: discourse-test-release-native
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
           docker_context: docker-upstream/image/discourse_test

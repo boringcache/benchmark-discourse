@@ -83,8 +83,8 @@ jobs:
           benchmark_workspace: ${{ github.repository }}
           submodules: "upstream docker-upstream"
 
-  boringcache-auto:
-    name: BC auto
+  boringcache-native:
+    name: BC native
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -99,12 +99,12 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC auto
+      - name: BC native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: auto
-          benchmark_id: discourse-docker-auto
+          buildkit_backend: native
+          benchmark_id: discourse-docker-native
           project_repo: discourse/discourse
           dockerfile_path: benchmark/discourse-dev.Dockerfile
           docker_context: .
