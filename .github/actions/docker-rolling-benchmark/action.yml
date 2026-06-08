@@ -7,6 +7,9 @@ inputs:
   buildkit_backend:
     required: false
     default: registry
+  buildkit_image:
+    required: false
+    default: mirror.gcr.io/moby/buildkit:buildx-stable-1
   benchmark_id:
     required: true
   project_repo:
@@ -187,6 +190,7 @@ runs:
         registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
         proxy-no-git: "true"
         driver-opts: |
+          image=${{ inputs.buildkit_image }}
           network=host
         verbose: true
 
@@ -230,6 +234,8 @@ runs:
       env:
         STRATEGY: ${{ inputs.strategy }}
         BUILDKIT_BACKEND: ${{ inputs.buildkit_backend }}
+        BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
+        BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BENCHMARK_ID: ${{ inputs.benchmark_id }}
         BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace }}
         BORINGCACHE_PROXY_LOG_PATH: ${{ steps.docker_cache.outputs.proxy-log-path }}

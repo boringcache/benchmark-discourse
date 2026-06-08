@@ -14,6 +14,10 @@ on:
         required: false
         type: string
         default: registry
+      buildkit_image:
+        required: false
+        type: string
+        default: mirror.gcr.io/moby/buildkit:buildx-stable-1
       benchmark_id:
         required: true
         type: string
@@ -59,6 +63,8 @@ env:
   BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace || github.repository }}
   CACHE_LANE: ${{ inputs.cache_lane }}
   BUILDKIT_BACKEND: ${{ inputs.buildkit_backend }}
+  BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
+  BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
   DOCKER_BUILD_EXTRA_ARGS: ${{ inputs.docker_build_args }}
 
 jobs:
@@ -183,6 +189,7 @@ jobs:
           registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
           proxy-no-git: 'true'
           driver-opts: |
+            image=${{ inputs.buildkit_image }}
             network=host
           verbose: true
         env:
@@ -454,6 +461,7 @@ jobs:
           proxy-no-git: 'true'
           read-only: true
           driver-opts: |
+            image=${{ inputs.buildkit_image }}
             network=host
           verbose: true
         env:
