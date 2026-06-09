@@ -26,7 +26,6 @@ concurrency:
 permissions:
   contents: read
   actions: write
-  id-token: write
 
 jobs:
   gha-base-deps:
@@ -149,6 +148,9 @@ jobs:
     if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -184,8 +186,6 @@ jobs:
               --target=release
               --build-arg=from_tag=release
             image_tag: discourse-test-release-benchmark:latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout benchmark repo
         uses: actions/checkout@v6

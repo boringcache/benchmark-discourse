@@ -64,6 +64,10 @@ inputs:
     description: "ECR repository used for BuildKit registry cache manifests."
     required: false
     default: ""
+  ecr_allowed_account_ids:
+    description: "Comma-separated AWS account IDs allowed after assuming the ECR role."
+    required: false
+    default: "416997488804"
 
 runs:
   using: "composite"
@@ -222,11 +226,23 @@ runs:
         ECR_REGION: ${{ inputs.ecr_region }}
         ECR_ROLE_ARN: ${{ inputs.ecr_role_arn }}
         ECR_REPOSITORY: ${{ inputs.ecr_repository }}
+        ECR_ALLOWED_ACCOUNT_IDS: ${{ inputs.ecr_allowed_account_ids }}
       run: |
         set -euo pipefail
+        case "${GITHUB_EVENT_NAME:-}" in
+          pull_request|pull_request_target)
+            echo "ECR cache lanes are not allowed on pull request events." >&2
+            exit 1
+            ;;
+        esac
+        if [[ "${GITHUB_REF:-}" != refs/heads/* ]]; then
+          echo "ECR cache lanes require a branch ref; got ${GITHUB_REF:-<unset>}." >&2
+          exit 1
+        fi
         [[ -n "$ECR_REGION" ]] || { echo "Missing ecr_region input" >&2; exit 1; }
         [[ -n "$ECR_ROLE_ARN" ]] || { echo "Missing ecr_role_arn input" >&2; exit 1; }
         [[ -n "$ECR_REPOSITORY" ]] || { echo "Missing ecr_repository input" >&2; exit 1; }
+        [[ -n "$ECR_ALLOWED_ACCOUNT_IDS" ]] || { echo "Missing ecr_allowed_account_ids input" >&2; exit 1; }
 
     - name: Configure AWS credentials for ECR
       if: ${{ inputs.strategy == 'ecr-cache' }}
@@ -235,6 +251,8 @@ runs:
         aws-region: ${{ inputs.ecr_region }}
         role-to-assume: ${{ inputs.ecr_role_arn }}
         role-session-name: bc-docker-cache-${{ github.run_id }}-${{ github.run_attempt }}
+        role-duration-seconds: 10800
+        allowed-account-ids: ${{ inputs.ecr_allowed_account_ids }}
         mask-aws-account-id: "true"
         unset-current-credentials: "true"
 
