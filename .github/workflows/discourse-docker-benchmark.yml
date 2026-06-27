@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       prewarm_buildkit_image:
-        description: "Optional experimental BuildKit image. When set with prewarm_cli_image, the rolling run adds a BC BuildKit backend lane."
+        description: "Optional experimental BuildKit image. When set, the rolling run adds a BC BuildKit backend lane."
         required: false
         type: string
         default: ""
       prewarm_cli_image:
-        description: "Optional experimental Linux BoringCache CLI image. Used only by the experimental BuildKit lane."
+        description: "Optional experimental Linux BoringCache CLI image. Defaults to boringcache/one."
         required: false
         type: string
         default: ""
@@ -158,7 +158,7 @@ jobs:
 
   boringcache-buildkit-backend:
     name: BC BuildKit Backend
-    if: ${{ github.event_name != 'pull_request' && (inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE) && (inputs.prewarm_cli_image || vars.DISCOURSE_PREWARM_CLI_IMAGE) }}
+    if: ${{ github.event_name != 'pull_request' && (inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE) }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
