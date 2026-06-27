@@ -9,6 +9,8 @@ max_attempts=1
 cache_export_pattern='expected sha256:.*got sha256:e3b0|error writing layer blob|400 Bad Request|broken pipe'
 mode="${1:-full}"
 backend="${BUILDKIT_BACKEND:-registry}"
+cache_export_type="${BORINGCACHE_CACHE_EXPORT_TYPE:-}"
+effective_cache_to=""
 cache_import_ready="${BORINGCACHE_CACHE_IMPORT_READY:-true}"
 cache_requested_from_refs="${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}"
 cache_used_from_refs="${BORINGCACHE_CACHE_USED_FROM_REFS:-}"
@@ -82,6 +84,31 @@ find_step_seconds() {
   sed -nE "s/^#${step_id} DONE ([0-9]+(\\.[0-9]+)?)s$/\\1/p" "$build_log" | tail -n1
 }
 
+cache_to_ref() {
+  local ref="${CACHE_TO:-}"
+  [[ -n "$ref" ]] || return 0
+  if [[ -z "$cache_export_type" ]]; then
+    printf '%s\n' "$ref"
+    return 0
+  fi
+  case "$cache_export_type" in
+    registry|boringcache)
+      ;;
+    *)
+      echo "Unsupported BORINGCACHE_CACHE_EXPORT_TYPE: ${cache_export_type}" >&2
+      exit 1
+      ;;
+  esac
+  case "$ref" in
+    type=*,*)
+      printf 'type=%s,%s\n' "$cache_export_type" "${ref#type=*,}"
+      ;;
+    *)
+      printf '%s\n' "$ref"
+      ;;
+  esac
+}
+
 write_build_metrics() {
   local output_path="${BENCHMARK_METRICS_OUTPUT:-}"
   [[ -n "$output_path" ]] || return 0
@@ -94,7 +121,7 @@ write_build_metrics() {
   local cached_steps=""
 
   import_step="$(find_step_id "importing cache manifest from")"
-  export_step="$(find_step_id "exporting cache to registry")"
+  export_step="$(find_step_id "exporting cache to (registry|boringcache)")"
   import_seconds="$(find_step_seconds "$import_step")"
   export_seconds="$(find_step_seconds "$export_step")"
   import_status="$(build_import_status)"
@@ -314,7 +341,8 @@ write_build_diagnostics() {
     echo "cache_used_from_refs=${cache_used_from_refs}"
     echo "cache_unreadable_from_refs=${cache_unreadable_from_refs}"
     echo "cache_promotion_refs=${cache_promotion_refs}"
-    echo "cache_to=${CACHE_TO:-}"
+    echo "cache_to=${effective_cache_to:-${CACHE_TO:-}}"
+    echo "cache_export_type=${cache_export_type:-}"
     echo "registry_proxy_tags=${BORINGCACHE_REGISTRY_PROXY_TAGS:-}"
     echo "blob_download_concurrency_override=${BORINGCACHE_BLOB_DOWNLOAD_CONCURRENCY:-}"
     echo "blob_prefetch_concurrency_override=${BORINGCACHE_BLOB_PREFETCH_CONCURRENCY:-}"
@@ -328,7 +356,7 @@ write_build_diagnostics() {
     grep -E 'importing cache manifest|failed to configure .*cache importer|inferred cache manifest type' "$build_log" || true
     echo "EOF"
     echo "export_lines<<EOF"
-    grep -E 'exporting cache to registry|DONE [0-9.]+s$' "$build_log" | tail -n 80 || true
+    grep -E 'exporting cache to (registry|boringcache)|DONE [0-9.]+s$' "$build_log" | tail -n 80 || true
     echo "EOF"
     echo "proxy_summary<<EOF"
     grep -E 'Mode:|OCI Human Tags|Internal Registry Root Tag|Startup mode|Full-tag hydration|OCI body hydration|OCI HEAD|SESSION tool=oci|KV flush|root publish|error|warn' "$proxy_log" | tail -n 160 || true
@@ -419,6 +447,7 @@ while true; do
   cache_args=()
   extra_args=()
   output_args=()
+  effective_cache_to=""
   while IFS= read -r arg; do
     [[ -n "$arg" ]] || continue
     extra_args+=("$arg")
@@ -442,7 +471,8 @@ while true; do
   if [[ "$mode" == "full" ]]; then
     if [[ "$backend" == "registry" ]]; then
       [[ -n "${CACHE_FROM:-}" ]] && cache_args+=(--cache-from "$CACHE_FROM")
-      [[ -n "${CACHE_TO:-}" ]] && cache_args+=(--cache-to "$CACHE_TO")
+      effective_cache_to="$(cache_to_ref)"
+      [[ -n "$effective_cache_to" ]] && cache_args+=(--cache-to "$effective_cache_to")
     fi
   elif [[ "$mode" == "seed-cache" ]]; then
     # --no-cache is required for type=registry export: without it, buildx
@@ -450,7 +480,8 @@ while true; do
     # registry proxy, so the proxy never uploads to BoringCache backend.
     cache_args=(--no-cache)
     if [[ "$backend" == "registry" ]]; then
-      [[ -n "${CACHE_TO:-}" ]] && cache_args+=(--cache-to "$CACHE_TO")
+      effective_cache_to="$(cache_to_ref)"
+      [[ -n "$effective_cache_to" ]] && cache_args+=(--cache-to "$effective_cache_to")
     fi
   elif [[ "$mode" == "partial-warm" ]]; then
     # Read-only: no --cache-to.

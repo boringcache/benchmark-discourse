@@ -4,6 +4,17 @@ run-name: >-
 
 on:
   workflow_dispatch:
+    inputs:
+      prewarm_buildkit_image:
+        description: "Optional experimental BuildKit image. When set with prewarm_cli_image, the rolling run adds a BC BuildKit backend lane."
+        required: false
+        type: string
+        default: ""
+      prewarm_cli_image:
+        description: "Optional experimental Linux BoringCache CLI image. Used only by the experimental BuildKit lane."
+        required: false
+        type: string
+        default: ""
   schedule:
     - cron: "17 3 * * 0"
   pull_request:
@@ -26,6 +37,7 @@ concurrency:
 permissions:
   contents: read
   actions: write
+  packages: read
 
 jobs:
   github-actions-cache:
@@ -142,4 +154,40 @@ jobs:
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
           benchmark_workspace: ${{ github.repository }}
+          submodules: "upstream docker-upstream"
+
+  boringcache-buildkit-backend:
+    name: BC BuildKit Backend
+    if: ${{ github.event_name != 'pull_request' && (inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE) && (inputs.prewarm_cli_image || vars.DISCOURSE_PREWARM_CLI_IMAGE) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
+      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
+      BORINGCACHE_API_TOKEN: ${{ secrets.BORINGCACHE_API_TOKEN || secrets.BORINGCACHE_RESTORE_TOKEN }}
+      BORINGCACHE_GHCR_READ_USER: ${{ vars.BORINGCACHE_GHCR_READ_USER || github.actor }}
+      BORINGCACHE_GHCR_READ_TOKEN: ${{ secrets.BORINGCACHE_GHCR_READ_TOKEN }}
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: BC BuildKit Backend
+        uses: ./.github/actions/docker-rolling-benchmark
+        with:
+          strategy: boringcache
+          buildkit_backend: registry
+          benchmark_id: discourse-docker-bc-buildkit
+          project_repo: discourse/discourse
+          dockerfile_path: benchmark/discourse-dev.Dockerfile
+          docker_context: .
+          image_tag: discourse-benchmark:latest
+          cli_platform: linux-amd64
+          cli_image: ${{ inputs.prewarm_cli_image || vars.DISCOURSE_PREWARM_CLI_IMAGE }}
+          buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE }}
+          benchmark_workspace: ${{ github.repository }}
+          cache_export_type: boringcache
           submodules: "upstream docker-upstream"
