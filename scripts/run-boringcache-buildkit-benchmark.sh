@@ -275,7 +275,11 @@ cache_from_requested() {
 }
 
 cache_from_usable() {
-  [[ -n "${CACHE_FROM:-}" ]] || [[ -n "$cache_used_from_refs" ]]
+  [[ "$cache_import_ready" == "true" ]] && { [[ -n "${CACHE_FROM:-}" ]] || [[ -n "$cache_used_from_refs" ]]; }
+}
+
+cache_from_import_arg_available() {
+  [[ "$cache_import_ready" == "true" && -n "${CACHE_FROM:-}" ]]
 }
 
 require_readable_cache_import() {
@@ -313,6 +317,8 @@ build_import_status() {
     echo "ok"
   elif grep -Eq 'failed to configure .*cache importer' "$build_log"; then
     echo "not_found"
+  elif cache_from_requested && ! cache_from_usable && [[ "$mode" == "full" && "$allow_rolling_bootstrap" == "true" ]]; then
+    echo "bootstrap_miss"
   elif cache_from_requested && ! cache_from_usable; then
     echo "proxy_unreadable"
   else
@@ -470,7 +476,7 @@ while true; do
 
   if [[ "$mode" == "full" ]]; then
     if [[ "$backend" == "registry" ]]; then
-      [[ -n "${CACHE_FROM:-}" ]] && cache_args+=(--cache-from "$CACHE_FROM")
+      cache_from_import_arg_available && cache_args+=(--cache-from "$CACHE_FROM")
       effective_cache_to="$(cache_to_ref)"
       [[ -n "$effective_cache_to" ]] && cache_args+=(--cache-to "$effective_cache_to")
     fi
@@ -486,7 +492,7 @@ while true; do
   elif [[ "$mode" == "partial-warm" ]]; then
     # Read-only: no --cache-to.
     if [[ "$backend" == "registry" ]]; then
-      [[ -n "${CACHE_FROM:-}" ]] && cache_args+=(--cache-from "$CACHE_FROM")
+      cache_from_import_arg_available && cache_args+=(--cache-from "$CACHE_FROM")
     fi
   else
     echo "Unknown build mode: $mode" >&2
