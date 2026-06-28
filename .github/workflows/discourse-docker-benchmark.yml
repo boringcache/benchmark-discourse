@@ -121,6 +121,9 @@ jobs:
           benchmark_workspace: ${{ github.repository }}
           submodules: "upstream docker-upstream"
 
+  # No Docker +toolcache lanes here yet: the Discourse benchmark image runs
+  # bundle/yarn/pnpm work in Docker, not a stable supported turbo/nx/sccache
+  # contract. Keep controls comparable by leaving the Docker graph alone.
   boringcache-native:
     name: BC Native
     runs-on: ubuntu-latest
