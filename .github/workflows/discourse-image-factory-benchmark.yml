@@ -212,7 +212,7 @@ jobs:
           ecr_repository: ${{ vars.DOCKER_BENCHMARK_ECR_REPOSITORY }}
 
   bc-base-deps:
-    name: BC / base deps
+    name: BC OCI / base deps
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -227,7 +227,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC
+      - name: BC OCI
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -245,7 +245,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-base-web:
-    name: BC / base web
+    name: BC OCI / base web
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -260,7 +260,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC
+      - name: BC OCI
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -279,7 +279,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-base-release:
-    name: BC / base release
+    name: BC OCI / base release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -294,7 +294,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC
+      - name: BC OCI
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -313,7 +313,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-test-release:
-    name: BC / test release
+    name: BC OCI / test release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -328,7 +328,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC
+      - name: BC OCI
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -347,7 +347,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-native-base-deps:
-    name: BC native / base deps
+    name: BC Native / base deps
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -362,7 +362,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC native
+      - name: BC Native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -380,7 +380,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-native-base-web:
-    name: BC native / base web
+    name: BC Native / base web
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -395,7 +395,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC native
+      - name: BC Native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -414,7 +414,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-native-base-release:
-    name: BC native / base release
+    name: BC Native / base release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -429,7 +429,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC native
+      - name: BC Native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -448,7 +448,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-native-test-release:
-    name: BC native / test release
+    name: BC Native / test release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -463,7 +463,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC native
+      - name: BC Native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache

@@ -10,11 +10,6 @@ on:
         required: false
         type: string
         default: ""
-      prewarm_cli_image:
-        description: "Optional experimental Linux BoringCache CLI image. Defaults to boringcache/one."
-        required: false
-        type: string
-        default: ""
   schedule:
     - cron: "17 3 * * 0"
   pull_request:
@@ -97,7 +92,7 @@ jobs:
           ecr_repository: ${{ vars.DOCKER_BENCHMARK_ECR_REPOSITORY }}
 
   boringcache-oci:
-    name: BC
+    name: BC OCI
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -112,7 +107,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC
+      - name: BC OCI
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -127,7 +122,7 @@ jobs:
           submodules: "upstream docker-upstream"
 
   boringcache-native:
-    name: BC native
+    name: BC Native
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -142,7 +137,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC native
+      - name: BC Native
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
@@ -186,7 +181,6 @@ jobs:
           docker_context: .
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
-          cli_image: ${{ inputs.prewarm_cli_image || vars.DISCOURSE_PREWARM_CLI_IMAGE }}
           buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE }}
           benchmark_workspace: ${{ github.repository }}
           cache_export_type: boringcache
