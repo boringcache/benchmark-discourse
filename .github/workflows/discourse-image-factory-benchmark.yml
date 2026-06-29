@@ -137,7 +137,7 @@ jobs:
           docker_context: docker-upstream/image/discourse_test
           docker_build_args: |
             --target=release
-            --build-arg=from_tag=release
+            --build-arg=from_tag=discourse/base:release
           image_tag: discourse-test-release-benchmark:latest
           benchmark_workspace: ${{ github.repository }}
           submodules: "upstream docker-upstream"
@@ -184,7 +184,7 @@ jobs:
             docker_context: docker-upstream/image/discourse_test
             docker_build_args: |
               --target=release
-              --build-arg=from_tag=release
+              --build-arg=from_tag=discourse/base:release
             image_tag: discourse-test-release-benchmark:latest
     steps:
       - name: Checkout benchmark repo
@@ -339,7 +339,7 @@ jobs:
           docker_context: docker-upstream/image/discourse_test
           docker_build_args: |
             --target=release
-            --build-arg=from_tag=release
+            --build-arg=from_tag=discourse/base:release
           image_tag: discourse-test-release-benchmark:latest
           cli_platform: linux-amd64
           benchmark_workspace: ${{ github.repository }}
@@ -474,7 +474,7 @@ jobs:
           docker_context: docker-upstream/image/discourse_test
           docker_build_args: |
             --target=release
-            --build-arg=from_tag=release
+            --build-arg=from_tag=discourse/base:release
           image_tag: discourse-test-release-benchmark:latest
           cli_platform: linux-amd64
           benchmark_workspace: ${{ github.repository }}
