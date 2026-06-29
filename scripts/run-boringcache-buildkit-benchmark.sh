@@ -9,7 +9,8 @@ max_attempts=1
 cache_export_pattern='expected sha256:.*got sha256:e3b0|error writing layer blob|400 Bad Request|broken pipe'
 mode="${1:-full}"
 backend="${BUILDKIT_BACKEND:-registry}"
-cache_export_type="${BORINGCACHE_CACHE_EXPORT_TYPE:-}"
+buildkit_cache_backend="${BORINGCACHE_BUILDKIT_CACHE_BACKEND:-${BORINGCACHE_CACHE_EXPORT_TYPE:-}}"
+cache_export_type="$buildkit_cache_backend"
 effective_cache_to=""
 cache_import_ready="${BORINGCACHE_CACHE_IMPORT_READY:-true}"
 cache_requested_from_refs="${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}"
@@ -95,7 +96,7 @@ cache_to_ref() {
     registry|boringcache)
       ;;
     *)
-      echo "Unsupported BORINGCACHE_CACHE_EXPORT_TYPE: ${cache_export_type}" >&2
+      echo "Unsupported BuildKit cache backend: ${cache_export_type}" >&2
       exit 1
       ;;
   esac
@@ -338,6 +339,7 @@ write_build_diagnostics() {
   {
     echo "strategy=boringcache"
     echo "buildkit_backend=${backend}"
+    echo "buildkit_cache_backend=${buildkit_cache_backend:-registry}"
     echo "mode=${mode}"
     echo "builder=${BUILDER:-}"
     echo "cache_scope=${CACHE_SCOPE:-}"
