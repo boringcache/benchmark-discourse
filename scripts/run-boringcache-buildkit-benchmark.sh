@@ -9,6 +9,14 @@ max_attempts=1
 cache_export_pattern='expected sha256:.*got sha256:e3b0|error writing layer blob|400 Bad Request|broken pipe'
 mode="${1:-full}"
 backend="${BUILDKIT_BACKEND:-registry}"
+case "$backend" in
+  registry)
+    ;;
+  *)
+    echo "Unsupported BUILDKIT_BACKEND: ${backend}" >&2
+    exit 1
+    ;;
+esac
 buildkit_cache_backend="${BORINGCACHE_BUILDKIT_CACHE_BACKEND:-${BORINGCACHE_CACHE_EXPORT_TYPE:-}}"
 cache_export_type="$buildkit_cache_backend"
 effective_cache_to=""
@@ -20,9 +28,6 @@ cache_promotion_refs="${BORINGCACHE_DOCKER_PROMOTION_REFS:-}"
 allow_rolling_bootstrap="${ALLOW_BORINGCACHE_ROLLING_BOOTSTRAP:-false}"
 build_output="${BENCHMARK_BUILD_OUTPUT:-none}"
 oci_hydration="${BORINGCACHE_OCI_HYDRATION:-metadata-only}"
-native_tool_evidence_dir="$(mktemp -d /tmp/boringcache-native-tool.XXXXXX)"
-chmod 0777 "$native_tool_evidence_dir" 2>/dev/null || true
-native_tool_evidence_path="${native_tool_evidence_dir}/native-tool.json"
 export BORINGCACHE_OBSERVABILITY_INCLUDE_CACHE_OPS="${BORINGCACHE_OBSERVABILITY_INCLUDE_CACHE_OPS:-1}"
 start_proxy() { :; }
 stop_proxy() { :; }
@@ -147,14 +152,6 @@ write_build_metrics() {
   if [[ -n "${BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES:-}" ]]; then
     echo "oci_stream_through_min_bytes=${BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES}" >> "$output_path"
   fi
-  if [[ "$backend" == "native" ]]; then
-    echo "buildkit_backend=native" >> "$output_path"
-    if [[ -s "$native_tool_evidence_path" ]]; then
-      echo "native_tool_evidence=$native_tool_evidence_path" >> "$output_path"
-      append_native_tool_metrics "$native_tool_evidence_path" || true
-    fi
-  fi
-
   if [[ -s "$status_snapshot_path" ]] && command -v jq >/dev/null 2>&1; then
     append_status_metric() {
       local key="$1"
@@ -230,41 +227,6 @@ write_build_metrics() {
     fi
   fi
 }
-
-append_native_tool_metrics() {
-  local evidence_file="$1"
-  [[ -s "$evidence_file" ]] || return 1
-  command -v jq >/dev/null 2>&1 || return 1
-
-  local requested uploaded already_present uploaded_bytes export_seconds save_seconds
-  requested="$(jq -r '.publisher.final_save_checked_blob_count // .publisher.final_save_graph_blob_count // empty' "$evidence_file" 2>/dev/null || true)"
-  uploaded="$(jq -r '.publisher.final_save_uploaded_blob_count // empty' "$evidence_file" 2>/dev/null || true)"
-  already_present="$(jq -r '.publisher.final_save_already_present_blob_count // empty' "$evidence_file" 2>/dev/null || true)"
-  uploaded_bytes="$(jq -r '.publisher.final_save_uploaded_blob_bytes // .publisher.final_save_missing_blob_bytes // empty' "$evidence_file" 2>/dev/null || true)"
-  export_seconds="$(jq -r '.publisher.final_export_seconds // empty' "$evidence_file" 2>/dev/null || true)"
-  save_seconds="$(jq -r '.publisher.final_save_seconds // empty' "$evidence_file" 2>/dev/null || true)"
-  if [[ -z "$already_present" && "$requested" =~ ^[0-9]+$ && "$uploaded" =~ ^[0-9]+$ ]]; then
-    already_present="$(( requested > uploaded ? requested - uploaded : 0 ))"
-  fi
-
-  append_metric() {
-    local key="$1"
-    local value="$2"
-    if [[ -n "$value" && "$value" != "null" ]]; then
-      echo "$key=$value" >> "$output_path"
-    fi
-  }
-
-  append_metric oci_upload_requested_blobs "$requested"
-  append_metric oci_new_blob_count "$uploaded"
-  append_metric oci_upload_already_present "$already_present"
-  append_metric oci_new_blob_bytes "$uploaded_bytes"
-  append_metric oci_upload_batch_seconds "$save_seconds"
-  if [[ "$export_seconds" =~ ^[0-9]+([.][0-9]+)?$ && "$save_seconds" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    awk -v export_s="$export_seconds" -v save_s="$save_seconds" 'BEGIN { printf "docker_cache_export_seconds=%.3f\n", export_s + save_s }' >> "$output_path"
-  fi
-}
-
 
 capture_proxy_status() {
   local output_path="${1:-$status_snapshot_path}"
@@ -378,12 +340,6 @@ write_build_diagnostics() {
     grep -E '^#[0-9]+ DONE [0-9]+(\.[0-9]+)?s$' "$build_log" | tail -n 80 || true
     echo "EOF"
     echo "observability_jsonl=${observability_path}"
-    echo "native_tool_evidence=${native_tool_evidence_path}"
-    if [[ -s "$native_tool_evidence_path" ]]; then
-      echo "native_tool_summary<<EOF"
-      jq -c '{restore, publisher, command, publish}' "$native_tool_evidence_path" 2>/dev/null || cat "$native_tool_evidence_path"
-      echo "EOF"
-    fi
     if [[ -n "$observability_path" && -s "$observability_path" ]]; then
       printf 'observability_events='
       wc -l < "$observability_path" | tr -d ' '
@@ -394,61 +350,6 @@ write_build_diagnostics() {
     fi
   } > "$output_path"
 }
-
-run_native_build() {
-  local phase_hint="cold"
-  if [[ "$mode" == "partial-warm" ]]; then
-    phase_hint="warm"
-  elif [[ "${CACHE_LANE:-fresh}" == "rolling" ]]; then
-    phase_hint="commit"
-  fi
-
-  local boringcache_args=(
-    boringcache docker
-    --workspace "${BENCHMARK_WORKSPACE:?Set BENCHMARK_WORKSPACE}"
-    --tag "${CACHE_SCOPE:?Set CACHE_SCOPE}"
-    --backend native
-    --port "$proxy_port"
-    --cache-mode max
-    --no-platform
-    --no-git
-    --oci-hydration "$oci_hydration"
-    --metadata-hint "benchmark=${BENCHMARK_ID:-docker}"
-    --metadata-hint "phase=${phase_hint}"
-    --metadata-hint "lane=${CACHE_LANE:-fresh}"
-    --metadata-hint "backend=native"
-    --native-tool-evidence-json "$native_tool_evidence_path"
-    --fail-on-cache-error
-  )
-  if [[ "$mode" == "partial-warm" ]]; then
-    boringcache_args+=(--read-only)
-  fi
-
-  local boringcache_bin
-  boringcache_bin="$(command -v boringcache)"
-  local boringcache_cmd=("$boringcache_bin")
-
-  local builder_args=()
-  if [[ -n "${BUILDER:-}" ]]; then
-    builder_args=(--builder "$BUILDER")
-  fi
-
-  : > "$build_log"
-  set +e
-  DOCKER_BUILDKIT=1 BORINGCACHE_TIMING_TRACE=1 "${boringcache_cmd[@]}" "${boringcache_args[@]:1}" -- \
-    docker buildx build \
-    "${builder_args[@]}" \
-    --file "$DOCKERFILE_PATH" \
-    --tag "$IMAGE_TAG" \
-    --progress=plain \
-    "${extra_args[@]}" \
-    "${cache_args[@]}" \
-    "${output_args[@]}" \
-    "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
-  status=${PIPESTATUS[0]}
-  set -e
-}
-
 
 attempt=1
 while true; do
@@ -501,84 +402,80 @@ while true; do
     exit 1
   fi
 
-  if [[ "$backend" == "native" ]]; then
-    run_native_build
-  else
-    require_readable_cache_import
-    start_proxy
-    if ! ensure_proxy_available; then
-      echo "Registry proxy status was unavailable before build start (attempt ${attempt}/${max_attempts})" >&2
-      tail -n 200 "$proxy_log" || true
-      if [[ "$attempt" -ge "$max_attempts" ]]; then
-        write_build_diagnostics
-        exit 1
-      fi
-      stop_proxy
-      attempt=$((attempt + 1))
-      sleep 3
-      continue
+  require_readable_cache_import
+  start_proxy
+  if ! ensure_proxy_available; then
+    echo "Registry proxy status was unavailable before build start (attempt ${attempt}/${max_attempts})" >&2
+    tail -n 200 "$proxy_log" || true
+    if [[ "$attempt" -ge "$max_attempts" ]]; then
+      write_build_diagnostics
+      exit 1
     fi
-
-    : > "$build_log"
-    set +e
-    DOCKER_BUILDKIT=1 docker buildx build \
-      --builder "$BUILDER" \
-      --file "$DOCKERFILE_PATH" \
-      --tag "$IMAGE_TAG" \
-      --progress=plain \
-      "${extra_args[@]}" \
-      "${cache_args[@]}" \
-      "${output_args[@]}" \
-      "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
-    status=${PIPESTATUS[0]}
-    set -e
+    stop_proxy
+    attempt=$((attempt + 1))
+    sleep 3
+    continue
   fi
 
+  : > "$build_log"
+  set +e
+  DOCKER_BUILDKIT=1 docker buildx build \
+    --builder "$BUILDER" \
+    --file "$DOCKERFILE_PATH" \
+    --tag "$IMAGE_TAG" \
+    --progress=plain \
+    "${extra_args[@]}" \
+    "${cache_args[@]}" \
+    "${output_args[@]}" \
+    "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
+  status=${PIPESTATUS[0]}
+  set -e
+
   if [[ "$status" -eq 0 ]]; then
-    import_status="$(build_import_status)"
-    if [[ "$mode" == "partial-warm" && "$import_status" != "ok" ]]; then
-      capture_proxy_status
-      write_build_metrics
-      echo "Warm build completed without a usable registry cache import (status: ${import_status}); refusing invalid fresh sample." >&2
-      if [[ -n "${BENCHMARK_METRICS_OUTPUT:-}" && -s "$BENCHMARK_METRICS_OUTPUT" ]]; then
-        cat "$BENCHMARK_METRICS_OUTPUT" >&2
-      fi
-      exit 1
-    fi
-    if [[ "$mode" =~ ^(full|seed-cache)$ ]] && grep -Eq "$cache_export_pattern" "$build_log"; then
-      capture_proxy_status
-      write_build_metrics
-      write_build_diagnostics
-      echo "Build succeeded but registry cache export reported an error; failing benchmark." >&2
-      tail -n 200 "$build_log" || true
-      tail -n 400 "$proxy_log" || true
-      stop_proxy
-      exit 1
-    fi
+  import_status="$(build_import_status)"
+  if [[ "$mode" == "partial-warm" && "$import_status" != "ok" ]]; then
     capture_proxy_status
-    if [[ "$backend" == "registry" && "$mode" =~ ^(seed-cache|full)$ ]]; then
-      # Stop proxy gracefully so it can flush pending uploads.
-      echo "Flushing proxy cache to backend..."
-      flush_action_proxy
+    write_build_metrics
+    echo "Warm build completed without a usable registry cache import (status: ${import_status}); refusing invalid fresh sample." >&2
+    if [[ -n "${BENCHMARK_METRICS_OUTPUT:-}" && -s "$BENCHMARK_METRICS_OUTPUT" ]]; then
+      cat "$BENCHMARK_METRICS_OUTPUT" >&2
     fi
-    # Dump proxy log for diagnostics
-    echo "=== Proxy log (${mode}, last 200 lines) ==="
-    tail -n 200 "$proxy_log" 2>/dev/null || true
-    echo "=== End proxy log ==="
+    exit 1
+  fi
+  if [[ "$mode" =~ ^(full|seed-cache)$ ]] && grep -Eq "$cache_export_pattern" "$build_log"; then
+    capture_proxy_status
     write_build_metrics
     write_build_diagnostics
-    break
+    echo "Build succeeded but registry cache export reported an error; failing benchmark." >&2
+    tail -n 200 "$build_log" || true
+    tail -n 400 "$proxy_log" || true
+    stop_proxy
+    exit 1
+  fi
+  capture_proxy_status
+  if [[ "$backend" == "registry" && "$mode" =~ ^(seed-cache|full)$ ]]; then
+    # Stop proxy gracefully so it can flush pending uploads.
+    echo "Flushing proxy cache to backend..."
+    flush_action_proxy
+  fi
+  # Dump proxy log for diagnostics
+  echo "=== Proxy log (${mode}, last 200 lines) ==="
+  tail -n 200 "$proxy_log" 2>/dev/null || true
+  echo "=== End proxy log ==="
+  write_build_metrics
+  write_build_diagnostics
+  break
   fi
 
   stop_proxy
 
 
   if [[ "$attempt" -ge "$max_attempts" ]]; then
-    echo "Build (${mode}) failed after ${max_attempts} attempts" >&2
-    tail -n 200 "$build_log" || true
-    tail -n 400 "$proxy_log" || true
-    write_build_diagnostics
-    exit "$status"
+  echo "Build (${mode}) failed after ${max_attempts} attempts" >&2
+  tail -n 200 "$build_log" || true
+  tail -n 400 "$proxy_log" || true
+  write_build_diagnostics
+  exit "$status"
   fi
 
 done
