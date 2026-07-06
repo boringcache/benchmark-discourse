@@ -20,6 +20,7 @@ esac
 buildkit_cache_backend="${BORINGCACHE_BUILDKIT_CACHE_BACKEND:-${BORINGCACHE_CACHE_EXPORT_TYPE:-}}"
 cache_export_type="$buildkit_cache_backend"
 effective_cache_to=""
+cache_args=()
 cache_import_ready="${BORINGCACHE_CACHE_IMPORT_READY:-true}"
 cache_requested_from_refs="${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}"
 cache_used_from_refs="${BORINGCACHE_CACHE_USED_FROM_REFS:-}"
@@ -318,7 +319,9 @@ write_build_diagnostics() {
     echo "blob_prefetch_concurrency_override=${BORINGCACHE_BLOB_PREFETCH_CONCURRENCY:-}"
     echo "oci_stream_through_min_bytes=${BORINGCACHE_OCI_STREAM_THROUGH_MIN_BYTES:-}"
     printf 'cache_args='
-    printf '%q ' "${cache_args[@]}"
+    if [[ "${cache_args[*]-}" != "" ]]; then
+      printf '%q ' "${cache_args[@]}"
+    fi
     printf '\n'
     echo "import_status=$(build_import_status)"
     echo "cached_steps=${cached_steps}"
@@ -349,6 +352,60 @@ write_build_diagnostics() {
       echo "EOF"
     fi
   } > "$output_path"
+}
+
+run_wrapped_boringcache_build() {
+  local phase_hint="cold"
+  if [[ "$mode" == "partial-warm" ]]; then
+    phase_hint="warm"
+  elif [[ "${CACHE_LANE:-fresh}" == "rolling" ]]; then
+    phase_hint="commit"
+  fi
+
+  local boringcache_args=(
+    boringcache docker
+    --workspace "${BENCHMARK_WORKSPACE:?Set BENCHMARK_WORKSPACE}"
+    --tag "${CACHE_SCOPE:?Set CACHE_SCOPE}"
+    --backend boringcache
+    --port "$proxy_port"
+    --cache-mode max
+    --no-platform
+    --no-git
+    --oci-hydration "$oci_hydration"
+    --metadata-hint "benchmark=${BENCHMARK_ID:-docker}"
+    --metadata-hint "phase=${phase_hint}"
+    --metadata-hint "lane=${CACHE_LANE:-fresh}"
+    --metadata-hint "backend=boringcache"
+    --fail-on-cache-error
+  )
+
+  if [[ "$mode" == "partial-warm" ]]; then
+    boringcache_args+=(--read-only)
+  fi
+
+  local wrapped_cache_args=()
+  local cache_arg
+  if [[ "${cache_args[*]-}" != "" ]]; then
+    for cache_arg in "${cache_args[@]}"; do
+      if [[ "$cache_arg" == "--no-cache" ]]; then
+        wrapped_cache_args+=("$cache_arg")
+      fi
+    done
+  fi
+
+  : > "$build_log"
+  set +e +u
+  DOCKER_BUILDKIT=1 BORINGCACHE_TIMING_TRACE=1 boringcache "${boringcache_args[@]:1}" -- \
+    docker buildx build \
+    --file "$DOCKERFILE_PATH" \
+    --tag "$IMAGE_TAG" \
+    --progress=plain \
+    "${extra_args[@]}" \
+    "${wrapped_cache_args[@]}" \
+    "${output_args[@]}" \
+    "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
+  status=${PIPESTATUS[0]}
+  set -e -u
 }
 
 attempt=1
@@ -402,34 +459,38 @@ while true; do
     exit 1
   fi
 
-  require_readable_cache_import
-  start_proxy
-  if ! ensure_proxy_available; then
-    echo "Registry proxy status was unavailable before build start (attempt ${attempt}/${max_attempts})" >&2
-    tail -n 200 "$proxy_log" || true
-    if [[ "$attempt" -ge "$max_attempts" ]]; then
-      write_build_diagnostics
-      exit 1
+  if [[ "$buildkit_cache_backend" == "boringcache" ]]; then
+    run_wrapped_boringcache_build
+  else
+    require_readable_cache_import
+    start_proxy
+    if ! ensure_proxy_available; then
+      echo "Registry proxy status was unavailable before build start (attempt ${attempt}/${max_attempts})" >&2
+      tail -n 200 "$proxy_log" || true
+      if [[ "$attempt" -ge "$max_attempts" ]]; then
+        write_build_diagnostics
+        exit 1
+      fi
+      stop_proxy
+      attempt=$((attempt + 1))
+      sleep 3
+      continue
     fi
-    stop_proxy
-    attempt=$((attempt + 1))
-    sleep 3
-    continue
-  fi
 
-  : > "$build_log"
-  set +e
-  DOCKER_BUILDKIT=1 docker buildx build \
-    --builder "$BUILDER" \
-    --file "$DOCKERFILE_PATH" \
-    --tag "$IMAGE_TAG" \
-    --progress=plain \
-    "${extra_args[@]}" \
-    "${cache_args[@]}" \
-    "${output_args[@]}" \
-    "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
-  status=${PIPESTATUS[0]}
-  set -e
+    : > "$build_log"
+    set +e
+    DOCKER_BUILDKIT=1 docker buildx build \
+      --builder "$BUILDER" \
+      --file "$DOCKERFILE_PATH" \
+      --tag "$IMAGE_TAG" \
+      --progress=plain \
+      "${extra_args[@]}" \
+      "${cache_args[@]}" \
+      "${output_args[@]}" \
+      "$BENCHMARK_DOCKER_CONTEXT" 2>&1 | tee "$build_log"
+    status=${PIPESTATUS[0]}
+    set -e
+  fi
 
   if [[ "$status" -eq 0 ]]; then
   import_status="$(build_import_status)"

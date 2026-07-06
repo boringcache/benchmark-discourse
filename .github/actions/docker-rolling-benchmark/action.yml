@@ -224,6 +224,7 @@ runs:
         workspace: ${{ inputs.benchmark_workspace }}
         cache-tag: ${{ steps.scope.outputs.cache_scope }}
         registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
+        cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}
         proxy-no-git: "true"
         driver-opts: |
           image=${{ inputs.buildkit_image }}
