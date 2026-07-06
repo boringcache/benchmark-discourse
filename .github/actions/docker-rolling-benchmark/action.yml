@@ -45,6 +45,10 @@ inputs:
   cli_platform:
     required: false
     default: linux-amd64
+  cli_version:
+    description: "Optional BoringCache CLI release tag. Canary runs can pass vcli-canary."
+    required: false
+    default: ""
   benchmark_workspace:
     required: true
   free_disk_space:
@@ -128,6 +132,7 @@ runs:
         setup: none
         mode: archive
         workspace: ${{ inputs.benchmark_workspace }}
+        cli-version: ${{ inputs.cli_version }}
         cli-platform: ${{ inputs.cli_platform }}
         cache-runtime: false
 
@@ -213,7 +218,7 @@ runs:
         fi
 
     - name: Configure boringcache/one for Docker
-      if: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' }}
+      if: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache' }}
       id: docker_cache
       uses: boringcache/one@v1
       with:
@@ -222,6 +227,7 @@ runs:
         mode: docker
         docker-command: setup
         workspace: ${{ inputs.benchmark_workspace }}
+        cli-version: ${{ inputs.cli_version }}
         cache-tag: ${{ steps.scope.outputs.cache_scope }}
         registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
         cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}

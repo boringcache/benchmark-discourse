@@ -10,6 +10,16 @@ on:
         required: false
         type: string
         default: ""
+      cli_version:
+        description: "Optional BoringCache CLI release tag for canary benchmark dispatches, for example vcli-canary."
+        required: false
+        type: string
+        default: ""
+      benchmark_id_suffix:
+        description: "Optional suffix appended to benchmark/cache scopes for isolated comparison runs."
+        required: false
+        type: string
+        default: ""
   schedule:
     - cron: "17 3 * * 0"
   pull_request:
@@ -52,7 +62,7 @@ jobs:
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: actions-cache
-          benchmark_id: discourse-docker
+          benchmark_id: discourse-docker${{ inputs.benchmark_id_suffix }}
           project_repo: discourse/discourse
           dockerfile_path: benchmark/discourse-dev.Dockerfile
           docker_context: .
@@ -79,7 +89,7 @@ jobs:
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: ecr-cache
-          benchmark_id: discourse-docker
+          benchmark_id: discourse-docker${{ inputs.benchmark_id_suffix }}
           project_repo: discourse/discourse
           dockerfile_path: benchmark/discourse-dev.Dockerfile
           docker_context: .
@@ -112,12 +122,13 @@ jobs:
         with:
           strategy: boringcache
           buildkit_backend: registry
-          benchmark_id: discourse-docker
+          benchmark_id: discourse-docker${{ inputs.benchmark_id_suffix }}
           project_repo: discourse/discourse
           dockerfile_path: benchmark/discourse-dev.Dockerfile
           docker_context: .
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
+          cli_version: ${{ inputs.cli_version }}
           benchmark_workspace: ${{ github.repository }}
           submodules: "upstream docker-upstream"
 
@@ -145,12 +156,13 @@ jobs:
         with:
           strategy: boringcache
           buildkit_backend: registry
-          benchmark_id: discourse-docker-bc-buildkit
+          benchmark_id: discourse-docker-bc-buildkit${{ inputs.benchmark_id_suffix }}
           project_repo: discourse/discourse
           dockerfile_path: benchmark/discourse-dev.Dockerfile
           docker_context: .
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
+          cli_version: ${{ inputs.cli_version }}
           buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE }}
           benchmark_workspace: ${{ github.repository }}
           buildkit_cache_backend: boringcache

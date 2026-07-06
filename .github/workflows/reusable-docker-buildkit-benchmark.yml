@@ -53,6 +53,10 @@ on:
         required: false
         type: string
         default: linux-amd64
+      cli_version:
+        required: false
+        type: string
+        default: ""
       benchmark_workspace:
         required: false
         type: string
@@ -128,6 +132,7 @@ jobs:
           setup: none
           mode: archive
           workspace: ${{ env.BENCHMARK_WORKSPACE }}
+          cli-version: ${{ inputs.cli_version }}
           cli-platform: ${{ inputs.cli_platform }}
           cache-runtime: false
 
@@ -188,7 +193,7 @@ jobs:
 
 
       - name: Configure boringcache/one for Docker
-        if: inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry'
+        if: inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache'
         id: docker_cache
         uses: boringcache/one@v1
         with:
@@ -197,6 +202,7 @@ jobs:
           mode: docker
           docker-command: setup
           workspace: ${{ env.BENCHMARK_WORKSPACE }}
+          cli-version: ${{ inputs.cli_version }}
           cache-tag: ${{ steps.scope.outputs.cache_scope }}
           registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
           cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}
@@ -447,7 +453,7 @@ jobs:
         run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Configure warm BoringCache Docker cache
-        if: inputs.cache_lane != 'rolling' && inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry'
+        if: inputs.cache_lane != 'rolling' && inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache'
         id: warm_docker_cache
         uses: boringcache/one@v1
         with:
@@ -456,6 +462,7 @@ jobs:
           mode: docker
           docker-command: setup
           workspace: ${{ env.BENCHMARK_WORKSPACE }}
+          cli-version: ${{ inputs.cli_version }}
           cache-tag: ${{ steps.scope.outputs.cache_scope }}
           registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
           cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}
@@ -699,6 +706,7 @@ jobs:
           setup: none
           mode: archive
           workspace: ${{ env.BENCHMARK_WORKSPACE }}
+          cli-version: ${{ inputs.cli_version }}
           cli-platform: ${{ inputs.cli_platform }}
           cache-runtime: false
 
