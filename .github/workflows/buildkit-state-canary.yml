@@ -31,28 +31,28 @@ jobs:
             build_args: ""
           - case_id: discourse-base-deps
             label: image factory base deps
-            dockerfile: docker-upstream/image/base/Dockerfile
+            dockerfile: Dockerfile
             context: docker-upstream/image/base
             image: discourse-base-deps-state-benchmark
             target: discourse-build-base
             build_args: ""
           - case_id: discourse-base-web
             label: image factory base web
-            dockerfile: docker-upstream/image/base/Dockerfile
+            dockerfile: Dockerfile
             context: docker-upstream/image/base
             image: discourse-base-web-state-benchmark
             target: discourse-web-only
             build_args: DISCOURSE_BRANCH=main
           - case_id: discourse-base-release
             label: image factory base release
-            dockerfile: docker-upstream/image/base/Dockerfile
+            dockerfile: Dockerfile
             context: docker-upstream/image/base
             image: discourse-base-release-state-benchmark
             target: discourse-release
             build_args: DISCOURSE_BRANCH=main
           - case_id: discourse-test-release
             label: image factory test release
-            dockerfile: docker-upstream/image/discourse_test/Dockerfile
+            dockerfile: Dockerfile
             context: docker-upstream/image/discourse_test
             image: discourse-test-release-state-benchmark
             target: release
