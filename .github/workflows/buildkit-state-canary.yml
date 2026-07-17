@@ -84,7 +84,7 @@ jobs:
         run: ./scripts/prepare-source.sh base
 
       - name: Build with persistent BuildKit state
-        uses: boringcache/one@one-canary-6a178eda8764
+        uses: boringcache/one@one-canary-a2a1e9c7f82d
         env:
           BORINGCACHE_BUILDKIT_MOUNTCACHE_OFFLOADER: "1"
           BORINGCACHE_REQUIRE_SERVER_SIGNATURE: "1"
@@ -92,11 +92,11 @@ jobs:
           setup: none
           mode: docker
           workspace: ${{ github.repository }}
-          cli-version: vcli-canary-661f42afa76e
+          cli-version: vcli-canary-1552d25f9179
           cli-platform: linux-amd64
           cache-runtime: "false"
           cache-backend: state
-          managed-buildkit-image: ghcr.io/boringcache/buildkit@sha256:f9f20bdc8b03f7f5c2946f51fe995ef1f08122af1034e4b4c2a8b1354273859f
+          managed-buildkit-image: ghcr.io/boringcache/buildkit@sha256:cfcc50779c981fa63ef4818e6744adfa642cc5fd00b60539def3458862739510
           cache-tag: ${{ format('{0}-buildkit-state-rolling-main-4c', matrix.case_id) }}
           working-directory: .
           context: ${{ matrix.context }}
@@ -112,6 +112,7 @@ jobs:
           proxy-no-platform: "true"
           no-platform: "true"
           save-policy: auto
+          fail-on-cache-error: "true"
           verify: wait
           verify-require-server-signature: "true"
           diagnostics: summary
