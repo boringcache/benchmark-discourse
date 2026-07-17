@@ -97,7 +97,7 @@ jobs:
           cache-runtime: "false"
           cache-backend: state
           managed-buildkit-image: ghcr.io/boringcache/buildkit@sha256:cfcc50779c981fa63ef4818e6744adfa642cc5fd00b60539def3458862739510
-          cache-tag: ${{ format('{0}-buildkit-state-rolling-main-4c', matrix.case_id) }}
+          cache-tag: ${{ format('{0}-buildkit-state-graduation-20260717-4c', matrix.case_id) }}
           working-directory: .
           context: ${{ matrix.context }}
           dockerfile: ${{ matrix.dockerfile }}
