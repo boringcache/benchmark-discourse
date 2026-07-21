@@ -205,7 +205,7 @@ jobs:
           cli-version: ${{ inputs.cli_version }}
           cache-tag: ${{ steps.scope.outputs.cache_scope }}
           registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
-          cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}
+          cache-backend: registry
           proxy-no-git: 'true'
           driver-opts: |
             image=${{ inputs.buildkit_image }}
@@ -465,7 +465,7 @@ jobs:
           cli-version: ${{ inputs.cli_version }}
           cache-tag: ${{ steps.scope.outputs.cache_scope }}
           registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
-          cache-backend: ${{ inputs.buildkit_cache_backend == 'boringcache' && 'boringcache' || 'registry' }}
+          cache-backend: registry
           proxy-no-git: 'true'
           read-only: true
           driver-opts: |
