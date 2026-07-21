@@ -332,7 +332,9 @@ write_build_diagnostics() {
     grep -E 'exporting cache to (registry|boringcache)|DONE [0-9.]+s$' "$build_log" | tail -n 80 || true
     echo "EOF"
     echo "proxy_summary<<EOF"
-    grep -E 'Mode:|OCI Human Tags|Internal Registry Root Tag|Startup mode|Full-tag hydration|OCI body hydration|OCI HEAD|SESSION tool=oci|KV flush|root publish|error|warn' "$proxy_log" | tail -n 160 || true
+    if [[ -s "$proxy_log" ]]; then
+      grep -E 'Mode:|OCI Human Tags|Internal Registry Root Tag|Startup mode|Full-tag hydration|OCI body hydration|OCI HEAD|SESSION tool=oci|KV flush|root publish|error|warn' "$proxy_log" | tail -n 160 || true
+    fi
     echo "EOF"
     echo "proxy_status<<EOF"
     if [[ -s "$status_snapshot_path" ]]; then
