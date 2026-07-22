@@ -1,11 +1,16 @@
 name: "Discourse Image Factory Benchmark"
 run-name: >-
-  ${{ format('Benchmark Rolling | {0}', github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'schedule' && 'Scheduled' || format('Manual dispatch ({0})', github.ref_name)) }}
+  ${{ format('Benchmark Rolling | {0}', github.event_name == 'push' && 'Upstream update' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "37 3 * * 0"
+  push:
+    branches:
+      - main
+    paths:
+      - ".gitmodules"
+      - "upstream"
+      - "docker-upstream"
   pull_request:
     paths:
       - ".gitmodules"
