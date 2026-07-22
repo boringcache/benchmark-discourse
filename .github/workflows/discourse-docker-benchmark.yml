@@ -1,25 +1,11 @@
 name: "Discourse Docker Benchmark"
 run-name: >-
-  ${{ format('Benchmark {0} | {1}', github.event_name == 'pull_request' && 'Validation' || github.event_name == 'workflow_dispatch' && inputs.cli_version != '' && 'Canary' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling')) && 'Rolling' || 'Fresh', github.event_name == 'push' && 'Upstream update' || github.event_name == 'schedule' && 'Weekly' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
-
+  ${{ format('Benchmark {0} | {1}', github.event_name == 'pull_request' && 'Validation' || 'Rolling', github.event_name == 'push' && 'Upstream update' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
 on:
   workflow_dispatch:
     inputs:
-      cache_lane:
-        description: "Benchmark lane"
-        required: false
-        type: choice
-        default: fresh
-        options:
-          - fresh
-          - rolling
       prewarm_buildkit_image:
         description: "Optional BuildKit image. When set, the run adds a BC BuildKit backend lane."
-        required: false
-        type: string
-        default: ""
-      cli_version:
-        description: "Optional BoringCache CLI release tag for canary benchmark dispatches, for example vcli-canary."
         required: false
         type: string
         default: ""
@@ -35,13 +21,12 @@ on:
       - ".gitmodules"
       - "upstream"
       - "docker-upstream"
-  schedule:
-    - cron: "17 3 * * 0"
   pull_request:
     paths:
       - ".gitmodules"
       - ".github/actions/docker-rolling-benchmark/**"
       - ".github/workflows/discourse-docker-benchmark.yml"
+      - ".github/workflows/discourse-fresh-benchmark.yml"
       - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
       - "README.md"
       - "benchmark/**"
@@ -62,7 +47,7 @@ permissions:
 jobs:
   github-actions-cache:
     name: GHA
-    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling') }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -88,7 +73,7 @@ jobs:
 
   boringcache-oci:
     name: BC OCI
-    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling') }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -114,13 +99,12 @@ jobs:
           docker_context: .
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
-          cli_version: ${{ inputs.cli_version }}
           benchmark_workspace: ${{ github.repository }}
           submodules: "upstream docker-upstream"
 
   boringcache-buildkit-backend:
     name: BC BuildKit Backend
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'rolling') }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -148,61 +132,7 @@ jobs:
           docker_context: .
           image_tag: discourse-benchmark:latest
           cli_platform: linux-amd64
-          cli_version: ${{ inputs.cli_version }}
           buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE || 'ghcr.io/boringcache/buildkit:v0.30.0-bc' }}
           benchmark_workspace: ${{ github.repository }}
           buildkit_cache_backend: boringcache
           submodules: "upstream docker-upstream"
-
-  fresh-github-actions-cache:
-    name: GHA
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'fresh') }}
-    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
-    with:
-      strategy: actions-cache
-      cache_lane: fresh
-      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
-      project_repo: discourse/discourse
-      dockerfile_path: benchmark/discourse-dev.Dockerfile
-      docker_context: .
-      image_tag: discourse-benchmark:latest
-      benchmark_workspace: ${{ github.repository }}
-    secrets: inherit
-
-  fresh-boringcache-oci:
-    name: BC OCI
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'fresh') }}
-    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
-    with:
-      strategy: boringcache
-      cache_lane: fresh
-      buildkit_backend: registry
-      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
-      project_repo: discourse/discourse
-      dockerfile_path: benchmark/discourse-dev.Dockerfile
-      docker_context: .
-      image_tag: discourse-benchmark:latest
-      cli_platform: linux-amd64
-      cli_version: ${{ inputs.cli_version }}
-      benchmark_workspace: ${{ github.repository }}
-    secrets: inherit
-
-  fresh-boringcache-buildkit-backend:
-    name: BC BuildKit Backend
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cache_lane == 'fresh') }}
-    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
-    with:
-      strategy: boringcache
-      cache_lane: fresh
-      buildkit_backend: registry
-      buildkit_cache_backend: boringcache
-      benchmark_id: ${{ format('discourse-docker-bc-buildkit{0}', inputs.benchmark_id_suffix) }}
-      project_repo: discourse/discourse
-      dockerfile_path: benchmark/discourse-dev.Dockerfile
-      docker_context: .
-      image_tag: discourse-benchmark:latest
-      cli_platform: linux-amd64
-      cli_version: ${{ inputs.cli_version }}
-      buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE || 'ghcr.io/boringcache/buildkit:v0.30.0-bc' }}
-      benchmark_workspace: ${{ github.repository }}
-    secrets: inherit
