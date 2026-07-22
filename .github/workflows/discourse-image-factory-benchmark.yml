@@ -149,7 +149,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-base-deps:
-    name: BC OCI / base deps
+    name: BoringCache / base deps
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -164,11 +164,10 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC OCI
+      - name: BoringCache
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: registry
           benchmark_id: discourse-base-deps
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
@@ -182,7 +181,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-base-web:
-    name: BC OCI / base web
+    name: BoringCache / base web
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -197,11 +196,10 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC OCI
+      - name: BoringCache
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: registry
           benchmark_id: discourse-base-web-only
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
@@ -216,7 +214,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-base-release:
-    name: BC OCI / base release
+    name: BoringCache / base release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -231,11 +229,10 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC OCI
+      - name: BoringCache
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: registry
           benchmark_id: discourse-base-release
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/base/Dockerfile
@@ -250,7 +247,7 @@ jobs:
           project_ref_submodule: docker-upstream
 
   bc-test-release:
-    name: BC OCI / test release
+    name: BoringCache / test release
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -265,11 +262,10 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: BC OCI
+      - name: BoringCache
         uses: ./.github/actions/docker-rolling-benchmark
         with:
           strategy: boringcache
-          buildkit_backend: registry
           benchmark_id: discourse-test-release
           project_repo: discourse/discourse_docker
           dockerfile_path: docker-upstream/image/discourse_test/Dockerfile

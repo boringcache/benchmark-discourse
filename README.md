@@ -37,7 +37,7 @@ The benchmark has three meaningful surfaces:
 
 Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair and the image-factory Docker pair on every upstream sync commit. The retired dependency-directory package-CAS benchmark set has been removed.
 
-BoringCache compares the explicit registry/OCI cache path and the managed BuildKit backend path. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit. Docker tool-cache lanes are intentionally absent until Discourse has a static supported Turbo/Nx/sccache contract inside the measured Dockerfile.
+BoringCache uses its managed BuildKit backend as the single product lane and compares it with GitHub Actions Cache. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit. Docker tool-cache lanes are intentionally absent until Discourse has a static supported Turbo/Nx/sccache contract inside the measured Dockerfile.
 
 ## Output
 

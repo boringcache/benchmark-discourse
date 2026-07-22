@@ -5,8 +5,8 @@ run-name: >-
 on:
   workflow_dispatch:
     inputs:
-      prewarm_buildkit_image:
-        description: "Optional BuildKit image. When set, the run adds a BC BuildKit backend lane."
+      buildkit_image:
+        description: "Optional managed BoringCache BuildKit image for canary runs."
         required: false
         type: string
         default: ""
@@ -47,13 +47,12 @@ jobs:
       benchmark_workspace: ${{ github.repository }}
     secrets: inherit
 
-  boringcache-oci:
-    name: BC OCI
+  boringcache:
+    name: BoringCache
     uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
     with:
       strategy: boringcache
       cache_lane: fresh
-      buildkit_backend: registry
       benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
       project_repo: discourse/discourse
       dockerfile_path: benchmark/discourse-dev.Dockerfile
@@ -61,24 +60,6 @@ jobs:
       image_tag: discourse-benchmark:latest
       cli_platform: linux-amd64
       cli_version: ${{ inputs.cli_version }}
-      benchmark_workspace: ${{ github.repository }}
-    secrets: inherit
-
-  boringcache-buildkit-backend:
-    name: BC BuildKit Backend
-    uses: ./.github/workflows/reusable-docker-buildkit-benchmark.yml
-    with:
-      strategy: boringcache
-      cache_lane: fresh
-      buildkit_backend: registry
-      buildkit_cache_backend: boringcache
-      benchmark_id: ${{ format('discourse-docker-bc-buildkit{0}', inputs.benchmark_id_suffix) }}
-      project_repo: discourse/discourse
-      dockerfile_path: benchmark/discourse-dev.Dockerfile
-      docker_context: .
-      image_tag: discourse-benchmark:latest
-      cli_platform: linux-amd64
-      cli_version: ${{ inputs.cli_version }}
-      buildkit_image: ${{ inputs.prewarm_buildkit_image || vars.DISCOURSE_PREWARM_BUILDKIT_IMAGE || 'ghcr.io/boringcache/buildkit:v0.30.0-bc' }}
+      buildkit_image: ${{ inputs.buildkit_image || 'ghcr.io/boringcache/buildkit:v0.30.0-bc' }}
       benchmark_workspace: ${{ github.repository }}
     secrets: inherit
