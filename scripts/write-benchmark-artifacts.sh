@@ -1528,7 +1528,6 @@ comparison_header_label() {
 strategy_label() {
   case "$1" in
     actions-cache) echo "GitHub Actions Cache" ;;
-    ecr-cache) echo "Amazon ECR Cache" ;;
     boringcache) echo "BoringCache" ;;
     depot-cache) echo "Depot Cache" ;;
     buildbuddy-cache) echo "BuildBuddy Cache" ;;

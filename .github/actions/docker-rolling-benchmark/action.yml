@@ -4,20 +4,9 @@ description: "Run one rolling Docker benchmark provider inside a single visible 
 inputs:
   strategy:
     required: true
-  buildkit_backend:
-    required: false
-    default: registry
-  buildkit_cache_backend:
-    description: "Optional BuildKit cache backend type. Use boringcache for the managed BuildKit backend."
-    required: false
-    default: ""
   buildkit_image:
     required: false
-    default: mirror.gcr.io/moby/buildkit:buildx-stable-1
-  cache_export_type:
-    description: "Legacy compatibility alias for buildkit_cache_backend. Prefer buildkit_cache_backend for BuildKit backend lanes."
-    required: false
-    default: ""
+    default: ghcr.io/boringcache/buildkit:v0.30.0-bc
   benchmark_id:
     required: true
   project_repo:
@@ -197,7 +186,6 @@ runs:
         if [[ "$STRATEGY" == "boringcache" ]]; then
           cache_scope="${BENCHMARK_ID}-run-rolling-${ref_slug}"
           echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
-          echo "registry_proxy_tags=${cache_scope}" >> "$GITHUB_OUTPUT"
           echo "tags_csv=${cache_scope}" >> "$GITHUB_OUTPUT"
         else
           cache_scope_primary="${BENCHMARK_ID}-rolling-${ref_slug}"
@@ -205,26 +193,6 @@ runs:
           echo "cache_scope_primary=${cache_scope_primary}" >> "$GITHUB_OUTPUT"
           echo "cache_scope_fallback=${cache_scope_fallback}" >> "$GITHUB_OUTPUT"
         fi
-
-    - name: Configure boringcache/one for Docker
-      if: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache' }}
-      id: docker_cache
-      uses: boringcache/one@v1
-      with:
-        setup: none
-        cache-runtime: false
-        mode: docker
-        docker-command: setup
-        workspace: ${{ inputs.benchmark_workspace }}
-        cli-version: ${{ inputs.cli_version }}
-        cache-tag: ${{ steps.scope.outputs.cache_scope }}
-        registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
-        cache-backend: registry
-        proxy-no-git: "true"
-        driver-opts: |
-          image=${{ inputs.buildkit_image }}
-          network=host
-        verbose: true
 
     - name: Set up Docker Buildx
       if: ${{ inputs.strategy == 'actions-cache' }}
@@ -265,29 +233,15 @@ runs:
       shell: bash
       env:
         STRATEGY: ${{ inputs.strategy }}
-        BUILDKIT_BACKEND: ${{ inputs.buildkit_backend }}
-        BORINGCACHE_BUILDKIT_CACHE_BACKEND: ${{ inputs.buildkit_cache_backend }}
-        BORINGCACHE_CACHE_EXPORT_TYPE: ${{ inputs.cache_export_type }}
         BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BENCHMARK_ID: ${{ inputs.benchmark_id }}
         BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace }}
-        BORINGCACHE_PROXY_LOG_PATH: ${{ steps.docker_cache.outputs.proxy-log-path }}
-        BORINGCACHE_PROXY_PORT: ${{ steps.docker_cache.outputs.proxy-port }}
-        BORINGCACHE_CACHE_IMPORT_READY: ${{ steps.docker_cache.outputs.docker-cache-import-ready }}
-        BORINGCACHE_CACHE_REQUESTED_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-requested-from-refs }}
-        BORINGCACHE_CACHE_USED_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-from-refs }}
-        BORINGCACHE_CACHE_UNREADABLE_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-unreadable-from-refs }}
-        BORINGCACHE_DOCKER_PROMOTION_REFS: ${{ steps.docker_cache.outputs.docker-cache-promotion-refs }}
-        BUILDER: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && steps.docker_cache.outputs.buildx-name || steps.buildx.outputs.name || '' }}
-        CACHE_FROM: ${{ steps.docker_cache.outputs.cache-from }}
-        CACHE_TO: ${{ steps.docker_cache.outputs.cache-to }}
+        BUILDER: ${{ steps.buildx.outputs.name || '' }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
         CACHE_SCOPE_PRIMARY: ${{ steps.scope.outputs.cache_scope_primary }}
         CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.cache_scope_fallback }}
-        BORINGCACHE_REGISTRY_PROXY_TAGS: ${{ steps.scope.outputs.registry_proxy_tags }}
         BORINGCACHE_OBSERVABILITY_JSONL_PATH: ${{ runner.temp }}/${{ inputs.benchmark_id }}-boringcache-commit-observability.jsonl
-        ALLOW_BORINGCACHE_ROLLING_BOOTSTRAP: "true"
         IMAGE_TAG: ${{ inputs.image_tag }}
         DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
         BENCHMARK_DOCKER_CONTEXT: ${{ inputs.docker_context }}
@@ -312,14 +266,6 @@ runs:
           mkdir -p "$(dirname "$diagnostics_file")"
 
           benchmark_script="./scripts/run-boringcache-buildkit-benchmark.sh"
-          if [[ "${BORINGCACHE_CACHE_IMPORT_READY:-}" != "true" || ( -z "${CACHE_FROM:-}" && -z "${BORINGCACHE_CACHE_USED_FROM_REFS:-}" ) ]]; then
-            echo "Rolling BoringCache Docker import was not ready; continuing as a bootstrap/update sample." >&2
-            echo "import ready: ${BORINGCACHE_CACHE_IMPORT_READY:-}" >&2
-            echo "requested refs: ${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}" >&2
-            echo "used refs: ${BORINGCACHE_CACHE_USED_FROM_REFS:-}" >&2
-            echo "unreadable refs: ${BORINGCACHE_CACHE_UNREADABLE_FROM_REFS:-}" >&2
-          fi
-
           set +e
           BENCHMARK_METRICS_OUTPUT="$metrics_file" BENCHMARK_DIAGNOSTICS_OUTPUT="$diagnostics_file" "$benchmark_script" full
           status="$?"
@@ -428,7 +374,6 @@ runs:
       shell: bash
       env:
         STRATEGY: ${{ inputs.strategy }}
-        BUILDKIT_BACKEND: ${{ inputs.buildkit_backend }}
         BENCHMARK_ID: ${{ inputs.benchmark_id }}
         BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace }}
       run: |
@@ -474,7 +419,7 @@ runs:
           --strategy "$STRATEGY" \
           --lane rolling \
           --mode docker \
-          --adapter oci \
+          --adapter buildkit \
           --project-repo "$PROJECT_REPO" \
           --project-ref "$(git rev-parse "HEAD:${PROJECT_REF_SUBMODULE}")" \
           --cold-seconds "${{ steps.build.outputs.seconds }}" \

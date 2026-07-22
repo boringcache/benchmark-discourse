@@ -10,24 +10,10 @@ on:
         required: false
         type: string
         default: fresh
-      buildkit_backend:
-        required: false
-        type: string
-        default: registry
-      buildkit_cache_backend:
-        description: "Optional BuildKit cache backend type. Use boringcache for the managed BuildKit backend."
-        required: false
-        type: string
-        default: ""
       buildkit_image:
         required: false
         type: string
-        default: mirror.gcr.io/moby/buildkit:buildx-stable-1
-      cache_export_type:
-        description: 'Optional override for BuildKit cache-to type. Experimental BoringCache BuildKit lanes use type=boringcache.'
-        required: false
-        type: string
-        default: ''
+        default: ghcr.io/boringcache/buildkit:v0.30.0-bc
       benchmark_id:
         required: true
         type: string
@@ -76,9 +62,6 @@ env:
   BENCHMARK_ID: ${{ inputs.benchmark_id }}
   BENCHMARK_WORKSPACE: ${{ inputs.benchmark_workspace || github.repository }}
   CACHE_LANE: ${{ inputs.cache_lane }}
-  BUILDKIT_BACKEND: ${{ inputs.buildkit_backend }}
-  BORINGCACHE_BUILDKIT_CACHE_BACKEND: ${{ inputs.buildkit_cache_backend }}
-  BORINGCACHE_CACHE_EXPORT_TYPE: ${{ inputs.cache_export_type }}
   BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
   BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
   DOCKER_BUILD_EXTRA_ARGS: ${{ inputs.docker_build_args }}
@@ -175,9 +158,7 @@ jobs:
           if [[ "${{ inputs.strategy }}" == "boringcache" ]]; then
             cache_scope="${BENCHMARK_ID}-run-${run_suffix}"
             tags_csv="${cache_scope}"
-            registry_proxy_tags="${cache_scope}"
             echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
-            echo "registry_proxy_tags=${registry_proxy_tags}" >> "$GITHUB_OUTPUT"
             echo "tags_csv=${tags_csv}" >> "$GITHUB_OUTPUT"
           else
             if [[ "$CACHE_LANE" == "rolling" ]]; then
@@ -191,30 +172,6 @@ jobs:
             echo "cache_scope_fallback=${cache_scope_fallback}" >> "$GITHUB_OUTPUT"
           fi
 
-
-      - name: Configure boringcache/one for Docker
-        if: inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache'
-        id: docker_cache
-        uses: boringcache/one@v1
-        with:
-          setup: none
-          cache-runtime: false
-          mode: docker
-          docker-command: setup
-          workspace: ${{ env.BENCHMARK_WORKSPACE }}
-          cli-version: ${{ inputs.cli_version }}
-          cache-tag: ${{ steps.scope.outputs.cache_scope }}
-          registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
-          cache-backend: registry
-          proxy-no-git: 'true'
-          driver-opts: |
-            image=${{ inputs.buildkit_image }}
-            network=host
-          verbose: true
-        env:
-          BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-          BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-          BORINGCACHE_OBSERVABILITY_JSONL_PATH: ${{ runner.temp }}/${{ inputs.benchmark_id }}-boringcache-build-observability.jsonl
 
       - name: Set up Docker Buildx
         if: inputs.strategy == 'actions-cache'
@@ -254,22 +211,11 @@ jobs:
         env:
           BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
           BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-          BORINGCACHE_PROXY_LOG_PATH: ${{ steps.docker_cache.outputs.proxy-log-path }}
-          BORINGCACHE_PROXY_PORT: ${{ steps.docker_cache.outputs.proxy-port }}
-          BORINGCACHE_CACHE_IMPORT_READY: ${{ steps.docker_cache.outputs.docker-cache-import-ready }}
-          BORINGCACHE_CACHE_REQUESTED_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-requested-from-refs }}
-          BORINGCACHE_CACHE_USED_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-from-refs }}
-          BORINGCACHE_CACHE_UNREADABLE_FROM_REFS: ${{ steps.docker_cache.outputs.docker-cache-unreadable-from-refs }}
-          BORINGCACHE_DOCKER_PROMOTION_REFS: ${{ steps.docker_cache.outputs.docker-cache-promotion-refs }}
-          BUILDER: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && steps.docker_cache.outputs.buildx-name || inputs.strategy == 'actions-cache' && steps.buildx.outputs.name || '' }}
-          CACHE_FROM: ${{ steps.docker_cache.outputs.cache-from }}
-          CACHE_TO: ${{ steps.docker_cache.outputs.cache-to }}
+          BUILDER: ${{ inputs.strategy == 'actions-cache' && steps.buildx.outputs.name || '' }}
           CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
           CACHE_SCOPE_PRIMARY: ${{ steps.scope.outputs.cache_scope_primary }}
           CACHE_SCOPE_FALLBACK: ${{ steps.scope.outputs.cache_scope_fallback }}
-          BORINGCACHE_REGISTRY_PROXY_TAGS: ${{ steps.scope.outputs.registry_proxy_tags }}
           BORINGCACHE_OBSERVABILITY_JSONL_PATH: ${{ runner.temp }}/${{ inputs.benchmark_id }}-boringcache-build-observability.jsonl
-          ALLOW_BORINGCACHE_ROLLING_BOOTSTRAP: ${{ inputs.cache_lane == 'rolling' && 'true' || '' }}
           IMAGE_TAG: ${{ inputs.image_tag }}
           DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
           BENCHMARK_DOCKER_CONTEXT: ${{ inputs.docker_context }}
@@ -292,16 +238,6 @@ jobs:
             rm -f "$diagnostics_file"
             rm -f "$observability_artifact"
             mkdir -p "$(dirname "$diagnostics_file")"
-            if [[ "$BUILDKIT_BACKEND" == "registry" && "$CACHE_LANE" == "rolling" ]]; then
-              if [[ "$BUILDKIT_BACKEND" == "registry" ]] && { [[ "${BORINGCACHE_CACHE_IMPORT_READY:-}" != "true" ]] || [[ -z "${CACHE_FROM:-}" && -z "${BORINGCACHE_CACHE_USED_FROM_REFS:-}" ]]; }; then
-                echo "Rolling BoringCache Docker import was not ready; continuing as a bootstrap/update sample." >&2
-                echo "import ready: ${BORINGCACHE_CACHE_IMPORT_READY:-}" >&2
-                echo "requested refs: ${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}" >&2
-                echo "used refs: ${BORINGCACHE_CACHE_USED_FROM_REFS:-}" >&2
-                echo "unreadable refs: ${BORINGCACHE_CACHE_UNREADABLE_FROM_REFS:-}" >&2
-                echo "This run will publish the rolling-scope OCI alias for the next continuous-commit sample." >&2
-              fi
-            fi
             phase_start="${{ steps.seed_timing_start.outputs.started_at }}"
             start="$(date +%s)"
             set +e
@@ -452,29 +388,6 @@ jobs:
         id: scenario_timing_start
         run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Configure warm BoringCache Docker cache
-        if: inputs.cache_lane != 'rolling' && inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && inputs.buildkit_cache_backend != 'boringcache'
-        id: warm_docker_cache
-        uses: boringcache/one@v1
-        with:
-          setup: none
-          cache-runtime: false
-          mode: docker
-          docker-command: setup
-          workspace: ${{ env.BENCHMARK_WORKSPACE }}
-          cli-version: ${{ inputs.cli_version }}
-          cache-tag: ${{ steps.scope.outputs.cache_scope }}
-          registry-tag: ${{ steps.scope.outputs.registry_proxy_tags }}
-          cache-backend: registry
-          proxy-no-git: 'true'
-          read-only: true
-          driver-opts: |
-            image=${{ inputs.buildkit_image }}
-            network=host
-          verbose: true
-        env:
-          BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-
       - name: Set up warm Docker Buildx
         if: inputs.cache_lane != 'rolling' && inputs.strategy == 'actions-cache'
         id: warm_buildx
@@ -489,9 +402,7 @@ jobs:
         run: |
           set -euo pipefail
           builder=""
-          if [[ "${{ inputs.strategy }}" == "boringcache" && "${{ inputs.buildkit_backend }}" == "registry" ]]; then
-            builder="${{ steps.warm_docker_cache.outputs.buildx-name }}"
-          elif [[ "${{ inputs.strategy }}" == "actions-cache" ]]; then
+          if [[ "${{ inputs.strategy }}" == "actions-cache" ]]; then
             builder="${{ steps.warm_buildx.outputs.name }}"
           fi
           if [[ -n "$builder" ]]; then
@@ -507,16 +418,7 @@ jobs:
         env:
           BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
           BORINGCACHE_SAVE_TOKEN: ''
-          BORINGCACHE_PROXY_LOG_PATH: ${{ steps.warm_docker_cache.outputs.proxy-log-path }}
-          BORINGCACHE_PROXY_PORT: ${{ steps.warm_docker_cache.outputs.proxy-port }}
-          BORINGCACHE_CACHE_IMPORT_READY: ${{ steps.warm_docker_cache.outputs.docker-cache-import-ready }}
-          BORINGCACHE_CACHE_REQUESTED_FROM_REFS: ${{ steps.warm_docker_cache.outputs.docker-cache-requested-from-refs }}
-          BORINGCACHE_CACHE_USED_FROM_REFS: ${{ steps.warm_docker_cache.outputs.docker-cache-from-refs }}
-          BORINGCACHE_CACHE_UNREADABLE_FROM_REFS: ${{ steps.warm_docker_cache.outputs.docker-cache-unreadable-from-refs }}
-          BORINGCACHE_DOCKER_PROMOTION_REFS: ${{ steps.warm_docker_cache.outputs.docker-cache-promotion-refs }}
-          BUILDER: ${{ inputs.strategy == 'boringcache' && inputs.buildkit_backend == 'registry' && steps.warm_docker_cache.outputs.buildx-name || inputs.strategy == 'actions-cache' && steps.warm_buildx.outputs.name || '' }}
-          CACHE_FROM: ${{ steps.warm_docker_cache.outputs.cache-from }}
-          CACHE_TO: ${{ steps.warm_docker_cache.outputs.cache-to }}
+          BUILDER: ${{ inputs.strategy == 'actions-cache' && steps.warm_buildx.outputs.name || '' }}
           CACHE_SCOPE: ${{ inputs.strategy == 'actions-cache' && steps.cold_baseline_build.outputs.cache_scope || steps.scope.outputs.cache_scope }}
           BORINGCACHE_OBSERVABILITY_JSONL_PATH: ${{ runner.temp }}/${{ inputs.benchmark_id }}-boringcache-warm-observability.jsonl
           IMAGE_TAG: ${{ inputs.image_tag }}
@@ -535,14 +437,6 @@ jobs:
           if [[ "${{ inputs.strategy }}" == "boringcache" ]]; then
             metrics_file="${RUNNER_TEMP}/warm-build-metrics.env"
             rm -f "$metrics_file"
-            if [[ "$BUILDKIT_BACKEND" == "registry" && "$BORINGCACHE_BUILDKIT_CACHE_BACKEND" != "boringcache" ]] && { [[ "${BORINGCACHE_CACHE_IMPORT_READY:-}" != "true" ]] || [[ -z "${CACHE_FROM:-}" && -z "${BORINGCACHE_CACHE_USED_FROM_REFS:-}" ]]; }; then
-              echo "BoringCache Docker warm import was not ready; refusing invalid warm sample." >&2
-              echo "import ready: ${BORINGCACHE_CACHE_IMPORT_READY:-}" >&2
-              echo "requested refs: ${BORINGCACHE_CACHE_REQUESTED_FROM_REFS:-}" >&2
-              echo "used refs: ${BORINGCACHE_CACHE_USED_FROM_REFS:-}" >&2
-              echo "unreadable refs: ${BORINGCACHE_CACHE_UNREADABLE_FROM_REFS:-}" >&2
-              exit 1
-            fi
             phase_start="${{ steps.scenario_timing_start.outputs.started_at }}"
             start="$(date +%s)"
             set +e
@@ -912,9 +806,9 @@ jobs:
             emit bytes_uploaded "$BC_BYTES"
 
             if [[ "$CACHE_LANE" == "rolling" ]]; then
-              emit hit_behavior_note "Rolling lane: one continuous-commit build imports the prior branch/default OCI cache, exports/promotes the updated cache, and records that commit build only. Fresh lane owns the separate cold-build plus warm-rerun parity check."
+              emit hit_behavior_note "Rolling lane: one continuous-commit build restores the prior branch/default BoringCache history, publishes the updated managed cache, and records that commit build only. Fresh lane owns the separate cold-build plus warm-rerun parity check."
             else
-              emit hit_behavior_note "Fresh lane: the cold build starts from empty BoringCache tags and empty Docker layer cache, uses --no-cache + cache-to via the BoringCache registry proxy (mode=max), and records cold timing while populating the shared cache. Warm rebuilds the same pinned base tree after local BuildKit state is pruned, with cache-from only, no helper mounted inside Docker RUN steps, and no synthetic mutations."
+              emit hit_behavior_note "Fresh lane: the cold build starts from empty BoringCache tags and empty Docker layer cache, uses --no-cache with the managed BoringCache backend, and records cold timing while populating the shared cache. Warm rebuilds the same pinned base tree after local BuildKit state is pruned, with managed cache restore only, no helper mounted inside Docker RUN steps, and no synthetic mutations."
             fi
           else
             emit cache_import_status ""
