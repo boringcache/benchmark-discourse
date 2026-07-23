@@ -655,7 +655,7 @@ jobs:
           tags_csv="${{ steps.scope.outputs.tags_csv }}"
           mkdir -p benchmark-storage
           breakdown_path="benchmark-storage/boringcache-storage-breakdown.json"
-          exact_tags=""
+          exact_tags="$tags_csv"
           bytes="$(BORINGCACHE_STORAGE_BREAKDOWN_PATH="$breakdown_path" BORINGCACHE_EXACT_TAGS="$exact_tags" .benchmark-config/scripts/sum-boringcache-check-sizes.sh "$BENCHMARK_WORKSPACE" "$tags_csv")"
           echo "bytes=${bytes}" >> "$GITHUB_OUTPUT"
           echo "breakdown_path=${breakdown_path}" >> "$GITHUB_OUTPUT"
