@@ -2,6 +2,9 @@
 
 Isolated Discourse benchmark runner for BoringCache vs GitHub Actions cache.
 
+Stable BoringCache workflows install the verified CLI `v1.14.0` release;
+canary dispatches must use an exact immutable CLI tag.
+
 This repo exists separately from the central benchmarks publisher so Discourse can have:
 
 - a pinned upstream source commit
