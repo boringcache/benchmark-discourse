@@ -31,7 +31,8 @@ ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-ADD docker-upstream/templates/postgres.template.yml /pups/postgres.yml
+ADD docker-upstream/templates/postgres.${PG_MAJOR}.template.yml /pups/postgres.template.yml
+RUN sed -e 's/\(db_name: discourse\)/\1_development/' /pups/postgres.template.yml > /pups/postgres.yml
 RUN LANG=en_US.UTF-8 /pups/bin/pups /pups/postgres.yml
 
 ADD docker-upstream/image/discourse_dev/postgres_dev.template.yml /pups/postgres_dev.yml
