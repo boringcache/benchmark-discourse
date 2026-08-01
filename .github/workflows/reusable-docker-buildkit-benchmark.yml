@@ -13,7 +13,7 @@ on:
       buildkit_image:
         required: false
         type: string
-        default: ghcr.io/boringcache/buildkit:v0.30.0-bc
+        default: ''
       benchmark_id:
         required: true
         type: string
