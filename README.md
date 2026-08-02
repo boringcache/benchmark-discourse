@@ -2,7 +2,7 @@
 
 Isolated Discourse benchmark runner for BoringCache vs GitHub Actions cache.
 
-Stable BoringCache workflows install the verified CLI `v1.16.3` release;
+Stable BoringCache workflows install the verified CLI `v1.16.4` release;
 canary dispatches must use an exact immutable CLI tag.
 
 This repo exists separately from the central benchmarks publisher so Discourse can have:
@@ -38,7 +38,7 @@ The benchmark has three meaningful surfaces:
 - `discourse-base-deps`, `discourse-base-web-only`, and `discourse-base-release`: selected `discourse_docker` base image targets.
 - `discourse-test-release`: `discourse_docker` test-image release target.
 
-Rolling dispatch runs the Docker GitHub Actions Cache/BoringCache pair and the image-factory Docker pair on every upstream sync commit. The retired dependency-directory package-CAS benchmark set has been removed.
+Every upstream sync commit runs the Docker GitHub Actions Cache/BoringCache pair and the image-factory Docker pair through their normal product workflows. The retired dependency-directory package-CAS benchmark set has been removed.
 
 BoringCache uses its managed BuildKit backend as the single product lane and compares it with GitHub Actions Cache. It does not call BoringCache inside Dockerfile `RUN` steps, and upstream Dockerfile cache mounts stay native to BuildKit. Docker tool-cache lanes are intentionally absent until Discourse has a static supported Turbo/Nx/sccache contract inside the measured Dockerfile.
 
