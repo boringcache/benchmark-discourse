@@ -1,5 +1,6 @@
-name: "Discourse Image Factory Benchmark"
-run-name: ${{ format('Benchmark {0} | {1}', inputs.cli_version != '' && 'Canary' || 'Rolling', github.event_name == 'push' && 'Upstream update' || format('Manual dispatch ({0})', github.ref_name)) }}
+name: "Discourse Image Factory Fresh"
+run-name: >-
+  ${{ format('Benchmark {0} | {1}', github.event_name == 'pull_request' && 'Validation' || inputs.cli_version != '' && 'Canary' || 'Fresh', github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
 on:
   workflow_dispatch:
     inputs:
@@ -7,9 +8,8 @@ on:
       cli_version: {description: "Optional exact BoringCache CLI release tag.", required: false, type: string, default: ""}
       benchmark_id_suffix: {description: "Optional suffix for isolated comparison runs.", required: false, type: string, default: ""}
       runner_label: {description: "Optional runner label for a manual main-branch experiment.", required: false, type: string, default: ""}
-  push:
-    branches: [main]
-    paths: [".gitmodules", "docker-upstream"]
+  pull_request:
+    paths: [".boringcache.toml", ".gitmodules", ".github/actions/discourse-docker-benchmark/**", ".github/workflows/discourse-image-factory-benchmark.yml", ".github/workflows/discourse-image-factory-fresh-benchmark.yml", "benchmark/**", "scripts/**", "docker-upstream"]
 concurrency: {group: "${{ github.workflow }}-${{ github.ref_name }}", cancel-in-progress: false}
 permissions: {contents: read, actions: write, packages: read}
 env:
@@ -17,12 +17,12 @@ env:
   BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
   BORINGCACHE_NO_GIT: "true"
 jobs:
-  commit:
-    name: ${{ matrix.provider }} Discourse ${{ matrix.case.name }} commit
+  cold:
+    name: ${{ matrix.provider }} Discourse ${{ matrix.case.name }} cold
     if: inputs.runner_label == '' || github.ref_name == 'main'
     runs-on: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && inputs.runner_label || 'ubuntu-latest' }}
     timeout-minutes: 180
-    strategy:
+    strategy: &factory_strategy
       fail-fast: false
       matrix:
         strategy: [actions-cache, boringcache]
@@ -37,4 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/discourse-docker-benchmark
-        with: {strategy: "${{ matrix.strategy }}", cache_lane: rolling, phase: publish, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}"}
+        with: {strategy: "${{ matrix.strategy }}", cache_lane: fresh, phase: publish, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}"}
+  warm:
+    name: ${{ matrix.provider }} Discourse ${{ matrix.case.name }} warm
+    needs: cold
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && inputs.runner_label || 'ubuntu-latest' }}
+    timeout-minutes: 180
+    strategy: *factory_strategy
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-docker-benchmark
+        with: {strategy: "${{ matrix.strategy }}", cache_lane: fresh, phase: warm, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}"}

@@ -1,0 +1,106 @@
+name: "Run Discourse Docker benchmark phase"
+description: "Runs one Discourse Docker cache provider and phase."
+inputs:
+  strategy: {required: true}
+  cache_lane: {required: true}
+  phase: {required: true}
+  benchmark_id: {required: true}
+  dockerfile: {required: true}
+  context: {required: true}
+  image: {required: true}
+  target: {required: false, default: ""}
+  build_args: {required: false, default: ""}
+  cli_version: {required: false, default: ""}
+  buildkit_image: {required: false, default: ""}
+runs:
+  using: composite
+  steps:
+    - name: Checkout pinned Discourse sources
+      shell: bash
+      run: |
+        git submodule sync --recursive
+        git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+    - name: Prepare clean Discourse sources
+      shell: bash
+      env:
+        PREPARE_PHASE: ${{ inputs.phase == 'warm' && 'warm1' || 'base' }}
+      run: ./scripts/prepare-source.sh "$PREPARE_PHASE"
+    - name: Select the cache cohort
+      id: scope
+      shell: bash
+      env:
+        BENCHMARK_ID: ${{ inputs.benchmark_id }}
+        CACHE_LANE: ${{ inputs.cache_lane }}
+      run: |
+        set -euo pipefail
+        ref_slug="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+        ref_slug="${ref_slug#-}"
+        ref_slug="${ref_slug%-}"
+        ref_slug="${ref_slug:-main}"
+        if [[ "$CACHE_LANE" == "rolling" ]]; then cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}"; else cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"; fi
+        ./scripts/scope-boringcache-run.sh "$cache_scope"
+        echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
+    - name: Set up Buildx for the GitHub Actions comparison
+      if: inputs.strategy == 'actions-cache'
+      uses: docker/setup-buildx-action@v4
+    - name: Build with the GitHub Actions cache
+      if: inputs.strategy == 'actions-cache'
+      shell: bash
+      env:
+        CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        DOCKER_CONTEXT: ${{ inputs.context }}
+        IMAGE: ${{ inputs.image }}
+        TARGET: ${{ inputs.target }}
+        BUILD_ARGS: ${{ inputs.build_args }}
+      run: |
+        set -euo pipefail
+        target_args=()
+        [[ -z "$TARGET" ]] || target_args+=(--target "$TARGET")
+        build_args=()
+        while IFS= read -r value; do [[ -z "$value" ]] || build_args+=(--build-arg "$value"); done <<< "$BUILD_ARGS"
+        docker buildx build --file "$DOCKERFILE" --tag "${IMAGE}:latest" \
+          --cache-from "type=gha,scope=${CACHE_SCOPE}" --cache-to "type=gha,scope=${CACHE_SCOPE},mode=max" \
+          --load "${target_args[@]}" "${build_args[@]}" "$DOCKER_CONTEXT"
+    - name: Publish with BoringCache
+      if: inputs.strategy == 'boringcache' && inputs.phase == 'publish'
+      uses: boringcache/one@09e053620cda4d3472f26a3ddd181144a108e2c2 # v1.16.8
+      with:
+        cli-version: ${{ inputs.cli_version }}
+        setup: none
+        mode: docker
+        trust-policy: publish
+        context: ${{ inputs.context }}
+        dockerfile: ${{ inputs.dockerfile }}
+        image: ${{ inputs.image }}
+        tags: latest
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build_args }}
+        load: true
+        fail-on-cache-error: true
+        metadata-hints: benchmark=${{ inputs.benchmark_id }},phase=${{ inputs.cache_lane == 'rolling' && 'rolling' || 'fresh-cold' }}
+        managed-buildkit-image: ${{ inputs.buildkit_image }}
+    - name: Restore with BoringCache
+      if: inputs.strategy == 'boringcache' && inputs.phase == 'warm'
+      uses: boringcache/one@09e053620cda4d3472f26a3ddd181144a108e2c2 # v1.16.8
+      with:
+        cli-version: ${{ inputs.cli_version }}
+        setup: none
+        mode: docker
+        trust-policy: restore
+        context: ${{ inputs.context }}
+        dockerfile: ${{ inputs.dockerfile }}
+        image: ${{ inputs.image }}
+        tags: latest
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build_args }}
+        load: true
+        fail-on-cache-miss: true
+        fail-on-cache-error: true
+        metadata-hints: benchmark=${{ inputs.benchmark_id }},phase=fresh-warm
+        managed-buildkit-image: ${{ inputs.buildkit_image }}
+    - name: Verify the Discourse image
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: docker image inspect "${IMAGE}:latest" >/dev/null

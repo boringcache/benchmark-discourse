@@ -1,77 +1,43 @@
 name: "Discourse Docker Benchmark"
-run-name: >-
-  ${{ format('Benchmark {0} | {1}', github.event_name == 'pull_request' && 'Validation' || 'Rolling', github.event_name == 'push' && 'Upstream update' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
-
+run-name: ${{ format('Benchmark {0} | {1}', inputs.cli_version != '' && 'Canary' || 'Rolling', github.event_name == 'push' && 'Upstream update' || format('Manual dispatch ({0})', github.ref_name)) }}
 on:
   workflow_dispatch:
     inputs:
-      buildkit_image:
-        description: "Optional managed BoringCache BuildKit image."
-        required: false
-        type: string
-        default: ""
-      cli_version:
-        description: "Optional exact BoringCache CLI release tag."
-        required: false
-        type: string
-        default: ""
-      benchmark_id_suffix:
-        description: "Optional suffix for isolated comparison runs."
-        required: false
-        type: string
-        default: ""
+      buildkit_image: {description: "Optional managed BoringCache BuildKit image.", required: false, type: string, default: ""}
+      cli_version: {description: "Optional exact BoringCache CLI release tag.", required: false, type: string, default: ""}
+      benchmark_id_suffix: {description: "Optional suffix for isolated comparison runs.", required: false, type: string, default: ""}
+      runner_label: {description: "Optional runner label for a manual main-branch experiment.", required: false, type: string, default: ""}
   push:
-    branches:
-      - main
-    paths:
-      - ".gitmodules"
-      - "upstream"
-      - "docker-upstream"
-  pull_request:
-    paths:
-      - ".boringcache.toml"
-      - ".gitmodules"
-      - ".github/workflows/discourse-docker-benchmark.yml"
-      - ".github/workflows/discourse-fresh-benchmark.yml"
-      - ".github/workflows/reusable-discourse-docker-benchmark.yml"
-      - "README.md"
-      - "benchmark/**"
-      - "scripts/**"
-      - "upstream"
-      - "docker-upstream"
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-  actions: write
-  packages: read
-
+    branches: [main]
+    paths: [".gitmodules", "upstream", "docker-upstream"]
+concurrency: {group: "${{ github.workflow }}-${{ github.ref_name }}", cancel-in-progress: false}
+permissions: {contents: read, actions: write, packages: read}
+env:
+  BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
+  BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
+  BORINGCACHE_NO_GIT: "true"
 jobs:
-  github-actions-cache:
-    name: GHA
-    uses: ./.github/workflows/reusable-discourse-docker-benchmark.yml
-    with:
-      strategy: actions-cache
-      cache_lane: ${{ github.event_name == 'pull_request' && 'fresh' || 'rolling' }}
-      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
-      dockerfile: benchmark/discourse-dev.Dockerfile
-      context: .
-      image: discourse-benchmark
-    secrets: inherit
-
-  boringcache:
-    name: BC
-    uses: ./.github/workflows/reusable-discourse-docker-benchmark.yml
-    with:
-      strategy: boringcache
-      cache_lane: ${{ github.event_name == 'pull_request' && 'fresh' || 'rolling' }}
-      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
-      dockerfile: benchmark/discourse-dev.Dockerfile
-      context: .
-      image: discourse-benchmark
-      cli_version: ${{ inputs.cli_version }}
-      buildkit_image: ${{ inputs.buildkit_image }}
-    secrets: inherit
+  commit:
+    name: ${{ matrix.provider }} Discourse dev commit
+    if: inputs.runner_label == '' || github.ref_name == 'main'
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && inputs.runner_label || 'ubuntu-latest' }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {provider: GitHub Actions, strategy: actions-cache}
+          - {provider: BoringCache, strategy: boringcache}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-docker-benchmark
+        with:
+          strategy: ${{ matrix.strategy }}
+          cache_lane: rolling
+          phase: publish
+          benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
+          dockerfile: benchmark/discourse-dev.Dockerfile
+          context: .
+          image: discourse-benchmark
+          cli_version: ${{ inputs.cli_version }}
+          buildkit_image: ${{ inputs.buildkit_image }}
