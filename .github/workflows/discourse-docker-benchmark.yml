@@ -1,21 +1,22 @@
 name: "Discourse Docker Benchmark"
 run-name: >-
   ${{ format('Benchmark {0} | {1}', github.event_name == 'pull_request' && 'Validation' || 'Rolling', github.event_name == 'push' && 'Upstream update' || github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || format('Manual dispatch ({0})', github.ref_name)) }}
+
 on:
   workflow_dispatch:
     inputs:
       buildkit_image:
-        description: "Optional managed BoringCache BuildKit image for canary runs."
+        description: "Optional managed BoringCache BuildKit image."
         required: false
         type: string
         default: ""
       cli_version:
-        description: "Optional BoringCache CLI release tag for canary benchmark dispatches, for example vcli-canary."
+        description: "Optional exact BoringCache CLI release tag."
         required: false
         type: string
         default: ""
       benchmark_id_suffix:
-        description: "Optional suffix appended to benchmark/cache scopes for isolated comparison runs."
+        description: "Optional suffix for isolated comparison runs."
         required: false
         type: string
         default: ""
@@ -28,14 +29,13 @@ on:
       - "docker-upstream"
   pull_request:
     paths:
+      - ".boringcache.toml"
       - ".gitmodules"
-      - ".github/actions/docker-rolling-benchmark/**"
       - ".github/workflows/discourse-docker-benchmark.yml"
       - ".github/workflows/discourse-fresh-benchmark.yml"
-      - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
+      - ".github/workflows/reusable-discourse-docker-benchmark.yml"
       - "README.md"
       - "benchmark/**"
-      - "scenarios/**"
       - "scripts/**"
       - "upstream"
       - "docker-upstream"
@@ -52,59 +52,26 @@ permissions:
 jobs:
   github-actions-cache:
     name: GHA
-    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: GHA
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: actions-cache
-          benchmark_id: discourse-docker${{ inputs.benchmark_id_suffix }}
-          project_repo: discourse/discourse
-          dockerfile_path: benchmark/discourse-dev.Dockerfile
-          docker_context: .
-          image_tag: discourse-benchmark:latest
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
+    uses: ./.github/workflows/reusable-discourse-docker-benchmark.yml
+    with:
+      strategy: actions-cache
+      cache_lane: ${{ github.event_name == 'pull_request' && 'fresh' || 'rolling' }}
+      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
+      dockerfile: benchmark/discourse-dev.Dockerfile
+      context: .
+      image: discourse-benchmark
+    secrets: inherit
 
   boringcache:
-    name: BoringCache
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-      BORINGCACHE_GHCR_READ_USER: ${{ vars.BORINGCACHE_GHCR_READ_USER || github.actor }}
-      BORINGCACHE_GHCR_READ_TOKEN: ${{ secrets.BORINGCACHE_GHCR_READ_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: BoringCache
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: boringcache
-          benchmark_id: discourse-docker${{ inputs.benchmark_id_suffix }}
-          project_repo: discourse/discourse
-          dockerfile_path: benchmark/discourse-dev.Dockerfile
-          docker_context: .
-          image_tag: discourse-benchmark:latest
-          cli_platform: linux-amd64
-          cli_version: ${{ inputs.cli_version }}
-          buildkit_image: ${{ inputs.buildkit_image }}
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
+    name: BC
+    uses: ./.github/workflows/reusable-discourse-docker-benchmark.yml
+    with:
+      strategy: boringcache
+      cache_lane: ${{ github.event_name == 'pull_request' && 'fresh' || 'rolling' }}
+      benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
+      dockerfile: benchmark/discourse-dev.Dockerfile
+      context: .
+      image: discourse-benchmark
+      cli_version: ${{ inputs.cli_version }}
+      buildkit_image: ${{ inputs.buildkit_image }}
+    secrets: inherit

@@ -4,24 +4,37 @@ run-name: >-
 
 on:
   workflow_dispatch:
+    inputs:
+      buildkit_image:
+        description: "Optional managed BoringCache BuildKit image."
+        required: false
+        type: string
+        default: ""
+      cli_version:
+        description: "Optional exact BoringCache CLI release tag."
+        required: false
+        type: string
+        default: ""
+      benchmark_id_suffix:
+        description: "Optional suffix for isolated comparison runs."
+        required: false
+        type: string
+        default: ""
   push:
     branches:
       - main
     paths:
       - ".gitmodules"
-      - "upstream"
       - "docker-upstream"
   pull_request:
     paths:
+      - ".boringcache.toml"
       - ".gitmodules"
-      - ".github/actions/docker-rolling-benchmark/**"
       - ".github/workflows/discourse-image-factory-benchmark.yml"
-      - ".github/workflows/reusable-docker-buildkit-benchmark.yml"
+      - ".github/workflows/reusable-discourse-docker-benchmark.yml"
       - "README.md"
       - "benchmark/**"
-      - "scenarios/**"
       - "scripts/**"
-      - "upstream"
       - "docker-upstream"
 
 concurrency:
@@ -31,246 +44,56 @@ concurrency:
 permissions:
   contents: read
   actions: write
+  packages: read
 
 jobs:
-  gha-base-deps:
-    name: GHA / base deps
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: GHA
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: actions-cache
-          benchmark_id: discourse-base-deps
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-build-base
-          image_tag: discourse-base-deps-benchmark:latest
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  gha-base-web:
-    name: GHA / base web
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: GHA
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: actions-cache
-          benchmark_id: discourse-base-web-only
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-web-only
-            --build-arg=DISCOURSE_BRANCH=main
-          image_tag: discourse-base-web-only-benchmark:latest
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  gha-base-release:
-    name: GHA / base release
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: GHA
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: actions-cache
-          benchmark_id: discourse-base-release
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-release
-            --build-arg=DISCOURSE_BRANCH=main
-          image_tag: discourse-base-release-benchmark:latest
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  gha-test-release:
-    name: GHA / test release
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: GHA
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: actions-cache
-          benchmark_id: discourse-test-release
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
-          docker_context: docker-upstream/image/discourse_test
-          docker_build_args: |
-            --target=release
-            --build-arg=from_tag=discourse/base:release
-          image_tag: discourse-test-release-benchmark:latest
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  bc-base-deps:
-    name: BoringCache / base deps
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: BoringCache
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: boringcache
-          benchmark_id: discourse-base-deps
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-build-base
-          image_tag: discourse-base-deps-benchmark:latest
-          cli_platform: linux-amd64
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  bc-base-web:
-    name: BoringCache / base web
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: BoringCache
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: boringcache
-          benchmark_id: discourse-base-web-only
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-web-only
-            --build-arg=DISCOURSE_BRANCH=main
-          image_tag: discourse-base-web-only-benchmark:latest
-          cli_platform: linux-amd64
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  bc-base-release:
-    name: BoringCache / base release
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: BoringCache
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: boringcache
-          benchmark_id: discourse-base-release
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/base/Dockerfile
-          docker_context: docker-upstream/image/base
-          docker_build_args: |
-            --target=discourse-release
-            --build-arg=DISCOURSE_BRANCH=main
-          image_tag: discourse-base-release-benchmark:latest
-          cli_platform: linux-amd64
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
-
-  bc-test-release:
-    name: BoringCache / test release
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
-      BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
-    steps:
-      - name: Checkout benchmark repo
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-          submodules: false
-
-      - name: BoringCache
-        uses: ./.github/actions/docker-rolling-benchmark
-        with:
-          strategy: boringcache
-          benchmark_id: discourse-test-release
-          project_repo: discourse/discourse_docker
-          dockerfile_path: docker-upstream/image/discourse_test/Dockerfile
-          docker_context: docker-upstream/image/discourse_test
-          docker_build_args: |
-            --target=release
-            --build-arg=from_tag=discourse/base:release
-          image_tag: discourse-test-release-benchmark:latest
-          cli_platform: linux-amd64
-          benchmark_workspace: ${{ github.repository }}
-          submodules: "upstream docker-upstream"
-          project_ref_submodule: docker-upstream
+  benchmark:
+    name: ${{ matrix.strategy == 'boringcache' && 'BC' || 'GHA' }} / ${{ matrix.case.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        strategy:
+          - actions-cache
+          - boringcache
+        case:
+          - name: base deps
+            benchmark_id: discourse-base-deps
+            dockerfile: docker-upstream/image/base/Dockerfile
+            context: docker-upstream/image/base
+            image: discourse-base-deps-benchmark
+            target: discourse-build-base
+            build_args: ""
+          - name: base web
+            benchmark_id: discourse-base-web-only
+            dockerfile: docker-upstream/image/base/Dockerfile
+            context: docker-upstream/image/base
+            image: discourse-base-web-only-benchmark
+            target: discourse-web-only
+            build_args: DISCOURSE_BRANCH=main
+          - name: base release
+            benchmark_id: discourse-base-release
+            dockerfile: docker-upstream/image/base/Dockerfile
+            context: docker-upstream/image/base
+            image: discourse-base-release-benchmark
+            target: discourse-release
+            build_args: DISCOURSE_BRANCH=main
+          - name: test release
+            benchmark_id: discourse-test-release
+            dockerfile: docker-upstream/image/discourse_test/Dockerfile
+            context: docker-upstream/image/discourse_test
+            image: discourse-test-release-benchmark
+            target: release
+            build_args: from_tag=discourse/base:release
+    uses: ./.github/workflows/reusable-discourse-docker-benchmark.yml
+    with:
+      strategy: ${{ matrix.strategy }}
+      cache_lane: ${{ github.event_name == 'pull_request' && 'fresh' || 'rolling' }}
+      benchmark_id: ${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}
+      dockerfile: ${{ matrix.case.dockerfile }}
+      context: ${{ matrix.case.context }}
+      image: ${{ matrix.case.image }}
+      target: ${{ matrix.case.target }}
+      build_args: ${{ matrix.case.build_args }}
+      cli_version: ${{ inputs.cli_version }}
+      buildkit_image: ${{ inputs.buildkit_image }}
+    secrets: inherit
