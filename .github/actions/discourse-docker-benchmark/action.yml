@@ -50,6 +50,13 @@ runs:
         source_url="$(git config -f .gitmodules "submodule.${source_module}.url")"
         echo "source_repository=$(printf '%s' "${source_url#https://github.com/}" | sed 's/\.git$//')" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C "$source_module" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+    - name: Log in to the GitHub Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     - name: Start the provider setup timer
       id: setup_timer
       shell: bash
@@ -73,7 +80,8 @@ runs:
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
-        tags: ${{ inputs.image }}:latest
+        tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.image }}:actions-cache
+        push: ${{ github.event_name != 'pull_request' }}
         target: ${{ inputs.target }}
         build-args: ${{ inputs.build_args }}
         provenance: false
@@ -90,8 +98,9 @@ runs:
         trust-policy: publish
         context: ${{ inputs.context }}
         dockerfile: ${{ inputs.dockerfile }}
-        image: ${{ inputs.image }}
-        tags: latest
+        image: ghcr.io/${{ github.repository_owner }}/${{ inputs.image }}
+        tags: boringcache
+        push: ${{ github.event_name != 'pull_request' }}
         target: ${{ inputs.target }}
         build-args: ${{ inputs.build_args }}
         load: false
@@ -109,8 +118,9 @@ runs:
         trust-policy: restore
         context: ${{ inputs.context }}
         dockerfile: ${{ inputs.dockerfile }}
-        image: ${{ inputs.image }}
-        tags: latest
+        image: ghcr.io/${{ github.repository_owner }}/${{ inputs.image }}
+        tags: boringcache
+        push: ${{ github.event_name != 'pull_request' }}
         target: ${{ inputs.target }}
         build-args: ${{ inputs.build_args }}
         load: false

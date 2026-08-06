@@ -12,7 +12,7 @@ on:
   pull_request:
     paths: [".boringcache.toml", ".gitmodules", ".github/actions/discourse-docker-benchmark/**", ".github/workflows/discourse-docker-benchmark.yml", ".github/workflows/discourse-fresh-benchmark.yml", "benchmark/**", "scripts/**", "upstream", "docker-upstream"]
 concurrency: {group: "${{ github.workflow }}-${{ github.ref_name }}", cancel-in-progress: false}
-permissions: {contents: read, actions: write, packages: read}
+permissions: {contents: read, actions: write, packages: write}
 env:
   BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
   BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
