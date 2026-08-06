@@ -36,6 +36,7 @@ jobs:
           cache_lane: rolling
           phase: publish
           benchmark_id: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
+          push_image: "true"
           dockerfile: benchmark/discourse-dev.Dockerfile
           context: .
           image: discourse-benchmark

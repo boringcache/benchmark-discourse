@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/discourse-docker-benchmark
-        with: {strategy: "${{ matrix.strategy }}", cache_lane: rolling, phase: publish, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}"}
+        with: {strategy: "${{ matrix.strategy }}", cache_lane: rolling, phase: publish, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}", push_image: "true"}
   report:
     name: Discourse image factory rolling report
     needs: commit
