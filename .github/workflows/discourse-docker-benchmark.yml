@@ -41,3 +41,33 @@ jobs:
           image: discourse-benchmark
           cli_version: ${{ inputs.cli_version }}
           buildkit_image: ${{ inputs.buildkit_image }}
+  report:
+    name: Discourse Docker rolling report
+    needs: commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download the benchmark phase evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: phase-*
+          path: phase-evidence
+      - name: Publish the Discourse Docker benchmark report
+        run: |
+          python3 ./scripts/benchmark-report.py summarize \
+            --title "Discourse Docker rolling benchmark" \
+            --input-dir phase-evidence \
+            --output-dir benchmark-results
+      - name: Retain the discourse BoringCache rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-boringcache-rolling
+          path: benchmark-results/discourse-boringcache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse GitHub Actions rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-actions-cache-rolling
+          path: benchmark-results/discourse-actions-cache-rolling.json
+          if-no-files-found: error

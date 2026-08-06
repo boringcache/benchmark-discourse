@@ -38,3 +38,69 @@ jobs:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/discourse-docker-benchmark
         with: {strategy: "${{ matrix.strategy }}", cache_lane: rolling, phase: publish, benchmark_id: "${{ format('{0}{1}', matrix.case.benchmark_id, inputs.benchmark_id_suffix) }}", dockerfile: "${{ matrix.case.dockerfile }}", context: "${{ matrix.case.context }}", image: "${{ matrix.case.image }}", target: "${{ matrix.case.target }}", build_args: "${{ matrix.case.build_args }}", cli_version: "${{ inputs.cli_version }}", buildkit_image: "${{ inputs.buildkit_image }}"}
+  report:
+    name: Discourse image factory rolling report
+    needs: commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download the benchmark phase evidence
+        uses: actions/download-artifact@v6
+        with:
+          pattern: phase-*
+          path: phase-evidence
+      - name: Publish the Discourse image factory benchmark report
+        run: |
+          python3 ./scripts/benchmark-report.py summarize \
+            --title "Discourse image factory rolling benchmark" \
+            --input-dir phase-evidence \
+            --output-dir benchmark-results
+      - name: Retain the discourse-base-deps BoringCache rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-deps-boringcache-rolling
+          path: benchmark-results/discourse-base-deps-boringcache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-base-deps GitHub Actions rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-deps-actions-cache-rolling
+          path: benchmark-results/discourse-base-deps-actions-cache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-base-web-only BoringCache rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-web-only-boringcache-rolling
+          path: benchmark-results/discourse-base-web-only-boringcache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-base-web-only GitHub Actions rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-web-only-actions-cache-rolling
+          path: benchmark-results/discourse-base-web-only-actions-cache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-base-release BoringCache rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-release-boringcache-rolling
+          path: benchmark-results/discourse-base-release-boringcache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-base-release GitHub Actions rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-base-release-actions-cache-rolling
+          path: benchmark-results/discourse-base-release-actions-cache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-test-release BoringCache rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-test-release-boringcache-rolling
+          path: benchmark-results/discourse-test-release-boringcache-rolling.json
+          if-no-files-found: error
+      - name: Retain the discourse-test-release GitHub Actions rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-test-release-actions-cache-rolling
+          path: benchmark-results/discourse-test-release-actions-cache-rolling.json
+          if-no-files-found: error
