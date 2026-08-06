@@ -45,23 +45,16 @@ runs:
       uses: docker/setup-buildx-action@v4
     - name: Build with the GitHub Actions cache
       if: inputs.strategy == 'actions-cache'
-      shell: bash
-      env:
-        CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
-        DOCKERFILE: ${{ inputs.dockerfile }}
-        DOCKER_CONTEXT: ${{ inputs.context }}
-        IMAGE: ${{ inputs.image }}
-        TARGET: ${{ inputs.target }}
-        BUILD_ARGS: ${{ inputs.build_args }}
-      run: |
-        set -euo pipefail
-        target_args=()
-        [[ -z "$TARGET" ]] || target_args+=(--target "$TARGET")
-        build_args=()
-        while IFS= read -r value; do [[ -z "$value" ]] || build_args+=(--build-arg "$value"); done <<< "$BUILD_ARGS"
-        docker buildx build --file "$DOCKERFILE" --tag "${IMAGE}:latest" \
-          --cache-from "type=gha,scope=${CACHE_SCOPE}" --cache-to "type=gha,scope=${CACHE_SCOPE},mode=max" \
-          "${target_args[@]}" "${build_args[@]}" "$DOCKER_CONTEXT"
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        tags: ${{ inputs.image }}:latest
+        target: ${{ inputs.target }}
+        build-args: ${{ inputs.build_args }}
+        provenance: false
+        cache-from: type=gha,scope=${{ steps.scope.outputs.cache_scope }}
+        cache-to: type=gha,scope=${{ steps.scope.outputs.cache_scope }},mode=max
     - name: Publish with BoringCache
       if: inputs.strategy == 'boringcache' && inputs.phase == 'publish'
       uses: boringcache/one@366e1aa37c271014d69aa6e1a12df57c472fdf5d # v1.16.9
