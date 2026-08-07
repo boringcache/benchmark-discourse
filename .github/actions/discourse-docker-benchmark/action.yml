@@ -47,7 +47,9 @@ runs:
         ./scripts/scope-boringcache-run.sh "$cache_scope"
         echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
         source_module="${CASE_CONTEXT%%/*}"
-        source_module="${source_module:-upstream}"
+        if [[ -z "$source_module" ]] || ! git config -f .gitmodules --get "submodule.${source_module}.url" >/dev/null 2>&1; then
+          source_module="upstream"
+        fi
         source_url="$(git config -f .gitmodules "submodule.${source_module}.url")"
         echo "source_repository=$(printf '%s' "${source_url#https://github.com/}" | sed 's/\.git$//')" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C "$source_module" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -78,6 +80,9 @@ runs:
     - name: Build with the GitHub Actions cache
       if: inputs.strategy == 'actions-cache'
       uses: docker/build-push-action@v6
+      env:
+        DOCKER_BUILD_SUMMARY: "false"
+        DOCKER_BUILD_RECORD_UPLOAD: "false"
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}
