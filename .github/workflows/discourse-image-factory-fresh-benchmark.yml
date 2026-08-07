@@ -69,48 +69,48 @@ jobs:
       - name: Retain the discourse-base-deps BoringCache fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-deps-boringcache-fresh
-          path: benchmark-results/discourse-base-deps-boringcache-fresh.json
+          name: benchmark-discourse-base-deps${{ inputs.benchmark_id_suffix }}-boringcache-fresh
+          path: benchmark-results/discourse-base-deps${{ inputs.benchmark_id_suffix }}-boringcache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-base-deps GitHub Actions fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-deps-actions-cache-fresh
-          path: benchmark-results/discourse-base-deps-actions-cache-fresh.json
+          name: benchmark-discourse-base-deps${{ inputs.benchmark_id_suffix }}-actions-cache-fresh
+          path: benchmark-results/discourse-base-deps${{ inputs.benchmark_id_suffix }}-actions-cache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-base-web-only BoringCache fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-web-only-boringcache-fresh
-          path: benchmark-results/discourse-base-web-only-boringcache-fresh.json
+          name: benchmark-discourse-base-web-only${{ inputs.benchmark_id_suffix }}-boringcache-fresh
+          path: benchmark-results/discourse-base-web-only${{ inputs.benchmark_id_suffix }}-boringcache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-base-web-only GitHub Actions fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-web-only-actions-cache-fresh
-          path: benchmark-results/discourse-base-web-only-actions-cache-fresh.json
+          name: benchmark-discourse-base-web-only${{ inputs.benchmark_id_suffix }}-actions-cache-fresh
+          path: benchmark-results/discourse-base-web-only${{ inputs.benchmark_id_suffix }}-actions-cache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-base-release BoringCache fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-release-boringcache-fresh
-          path: benchmark-results/discourse-base-release-boringcache-fresh.json
+          name: benchmark-discourse-base-release${{ inputs.benchmark_id_suffix }}-boringcache-fresh
+          path: benchmark-results/discourse-base-release${{ inputs.benchmark_id_suffix }}-boringcache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-base-release GitHub Actions fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-base-release-actions-cache-fresh
-          path: benchmark-results/discourse-base-release-actions-cache-fresh.json
+          name: benchmark-discourse-base-release${{ inputs.benchmark_id_suffix }}-actions-cache-fresh
+          path: benchmark-results/discourse-base-release${{ inputs.benchmark_id_suffix }}-actions-cache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-test-release BoringCache fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-test-release-boringcache-fresh
-          path: benchmark-results/discourse-test-release-boringcache-fresh.json
+          name: benchmark-discourse-test-release${{ inputs.benchmark_id_suffix }}-boringcache-fresh
+          path: benchmark-results/discourse-test-release${{ inputs.benchmark_id_suffix }}-boringcache-fresh.json
           if-no-files-found: error
       - name: Retain the discourse-test-release GitHub Actions fresh result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-test-release-actions-cache-fresh
-          path: benchmark-results/discourse-test-release-actions-cache-fresh.json
+          name: benchmark-discourse-test-release${{ inputs.benchmark_id_suffix }}-actions-cache-fresh
+          path: benchmark-results/discourse-test-release${{ inputs.benchmark_id_suffix }}-actions-cache-fresh.json
           if-no-files-found: error

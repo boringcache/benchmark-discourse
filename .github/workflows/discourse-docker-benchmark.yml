@@ -16,6 +16,7 @@ env:
   BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
   BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
   BORINGCACHE_NO_GIT: "true"
+  BENCHMARK_ID: ${{ format('discourse-docker{0}', inputs.benchmark_id_suffix) }}
 jobs:
   commit:
     name: ${{ matrix.provider }} Discourse dev commit
@@ -52,7 +53,7 @@ jobs:
       - name: Download the benchmark phase evidence
         uses: actions/download-artifact@v6
         with:
-          pattern: phase-*
+          pattern: phase-${{ env.BENCHMARK_ID }}-*
           path: phase-evidence
       - name: Publish the Discourse Docker benchmark report
         run: |
@@ -60,15 +61,15 @@ jobs:
             --title "Discourse Docker rolling benchmark" \
             --input-dir phase-evidence \
             --output-dir benchmark-results
-      - name: Retain the discourse BoringCache rolling result
+      - name: Retain the BoringCache rolling result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-boringcache-rolling
-          path: benchmark-results/discourse-boringcache-rolling.json
+          name: benchmark-${{ env.BENCHMARK_ID }}-boringcache-rolling
+          path: benchmark-results/${{ env.BENCHMARK_ID }}-boringcache-rolling.json
           if-no-files-found: error
-      - name: Retain the discourse GitHub Actions rolling result
+      - name: Retain the GitHub Actions rolling result
         uses: actions/upload-artifact@v6
         with:
-          name: benchmark-discourse-actions-cache-rolling
-          path: benchmark-results/discourse-actions-cache-rolling.json
+          name: benchmark-${{ env.BENCHMARK_ID }}-actions-cache-rolling
+          path: benchmark-results/${{ env.BENCHMARK_ID }}-actions-cache-rolling.json
           if-no-files-found: error
