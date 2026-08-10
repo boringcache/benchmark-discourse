@@ -1,0 +1,82 @@
+name: "Discourse upstream image factory fresh"
+run-name: "${{ format('Discourse image factory | {0}', github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'Fresh') }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli_version: {description: "Exact BoringCache CLI release tag.", required: true, type: string, default: "v1.18.1"}
+      benchmark_id_suffix: {description: "Optional suffix for an isolated comparison.", required: false, type: string, default: ""}
+  schedule: [{cron: "17 3 * * 0"}]
+  pull_request:
+    paths: [".boringcache.toml", ".gitmodules", "plans/**", "scripts/**", ".github/actions/discourse-image-factory/**", ".github/workflows/discourse-image-factory-fresh.yml", "upstream", "docker-upstream"]
+
+concurrency: {group: "${{ github.workflow }}-${{ github.ref_name }}", cancel-in-progress: false}
+permissions: {contents: read, actions: write, packages: read}
+
+env:
+  BUILDKIT_PROGRESS: plain
+  BASE_IMAGE: ghcr.io/boringcache/discourse-benchmark-base
+  TEST_IMAGE: ghcr.io/boringcache/discourse-benchmark-test
+  DEV_IMAGE: ghcr.io/boringcache/discourse-benchmark-dev
+  SETUP_WIZARD_IMAGE: ghcr.io/boringcache/discourse-benchmark-setup-wizard
+  BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
+  BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
+  BORINGCACHE_NO_GIT: "true"
+
+jobs:
+  cold:
+    name: ${{ matrix.provider }} ${{ matrix.arch }} cold
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      ARCH: ${{ matrix.arch }}
+    strategy: &provider_matrix
+      fail-fast: false
+      matrix:
+        include:
+          - {provider: GitHub Actions, strategy: actions-cache, arch: amd64, runner: ubuntu-24.04}
+          - {provider: BoringCache, strategy: boringcache, arch: amd64, runner: ubuntu-24.04}
+          - {provider: GitHub Actions, strategy: actions-cache, arch: arm64, runner: ubuntu-24.04-arm}
+          - {provider: BoringCache, strategy: boringcache, arch: arm64, runner: ubuntu-24.04-arm}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-image-factory
+        with:
+          strategy: ${{ matrix.strategy }}
+          cache_lane: fresh
+          phase: publish
+          arch: ${{ matrix.arch }}
+          benchmark_id: ${{ format('discourse-image-factory{0}', inputs.benchmark_id_suffix) }}
+          cli_version: ${{ inputs.cli_version || 'v1.18.1' }}
+
+  warm:
+    name: ${{ matrix.provider }} ${{ matrix.arch }} warm
+    needs: cold
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy: *provider_matrix
+    env:
+      ARCH: ${{ matrix.arch }}
+      BORINGCACHE_SAVE_TOKEN: ""
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-image-factory
+        with:
+          strategy: ${{ matrix.strategy }}
+          cache_lane: fresh
+          phase: warm
+          arch: ${{ matrix.arch }}
+          benchmark_id: ${{ format('discourse-image-factory{0}', inputs.benchmark_id_suffix) }}
+          cli_version: ${{ inputs.cli_version || 'v1.18.1' }}
+
+  report:
+    name: Discourse image-factory fresh report
+    needs: warm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with: {pattern: "phase-*", path: phase-evidence}
+      - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse upstream image-factory fresh benchmark" --input-dir phase-evidence --output-dir benchmark-results
+      - uses: actions/upload-artifact@v6
+        with: {name: discourse-image-factory-fresh-report, path: benchmark-results/, if-no-files-found: error}

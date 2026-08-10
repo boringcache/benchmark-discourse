@@ -1,0 +1,63 @@
+name: "Discourse upstream image factory"
+run-name: ${{ format('Discourse image factory | {0}', github.event_name == 'push' && 'Upstream update' || format('Manual dispatch ({0})', github.ref_name)) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli_version: {description: "Exact BoringCache CLI release tag.", required: true, type: string, default: "v1.18.1"}
+      benchmark_id_suffix: {description: "Optional suffix for an isolated comparison.", required: false, type: string, default: ""}
+  push:
+    branches: [main]
+    paths: [".boringcache.toml", ".gitmodules", "plans/**", "scripts/**", ".github/actions/discourse-image-factory/**", "upstream", "docker-upstream"]
+
+concurrency: {group: "${{ github.workflow }}-${{ github.ref_name }}", cancel-in-progress: false}
+permissions: {contents: read, actions: write, packages: write}
+
+env:
+  BUILDKIT_PROGRESS: plain
+  BASE_IMAGE: ghcr.io/boringcache/discourse-benchmark-base
+  TEST_IMAGE: ghcr.io/boringcache/discourse-benchmark-test
+  DEV_IMAGE: ghcr.io/boringcache/discourse-benchmark-dev
+  SETUP_WIZARD_IMAGE: ghcr.io/boringcache/discourse-benchmark-setup-wizard
+  BORINGCACHE_RESTORE_TOKEN: ${{ secrets.BORINGCACHE_RESTORE_TOKEN }}
+  BORINGCACHE_SAVE_TOKEN: ${{ secrets.BORINGCACHE_SAVE_TOKEN }}
+  BORINGCACHE_NO_GIT: "true"
+
+jobs:
+  commit:
+    name: ${{ matrix.provider }} ${{ matrix.arch }} commit
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      ARCH: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {provider: GitHub Actions, strategy: actions-cache, arch: amd64, runner: ubuntu-24.04}
+          - {provider: BoringCache, strategy: boringcache, arch: amd64, runner: ubuntu-24.04}
+          - {provider: GitHub Actions, strategy: actions-cache, arch: arm64, runner: ubuntu-24.04-arm}
+          - {provider: BoringCache, strategy: boringcache, arch: arm64, runner: ubuntu-24.04-arm}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-image-factory
+        with:
+          strategy: ${{ matrix.strategy }}
+          cache_lane: rolling
+          phase: publish
+          arch: ${{ matrix.arch }}
+          benchmark_id: ${{ format('discourse-image-factory{0}', inputs.benchmark_id_suffix) }}
+          cli_version: ${{ inputs.cli_version || 'v1.18.1' }}
+          publish_images: ${{ github.event_name == 'push' }}
+
+  report:
+    name: Discourse image-factory rolling report
+    needs: commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with: {pattern: "phase-*", path: phase-evidence}
+      - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse upstream image-factory rolling benchmark" --input-dir phase-evidence --output-dir benchmark-results
+      - uses: actions/upload-artifact@v6
+        with: {name: discourse-image-factory-rolling-report, path: benchmark-results/, if-no-files-found: error}

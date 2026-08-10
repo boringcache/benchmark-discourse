@@ -1,0 +1,17 @@
+workspace = "boringcache/benchmark-discourse"
+
+[adapters.docker]
+tag = "discourse-image-factory"
+no-platform = true
+no-git = true
+fail-on-cache-error = true
+metadata-hints = ["benchmark=discourse", "upstream-job=base", "upstream-step=test-release-amd64"]
+command = [
+  "docker",
+  "buildx",
+  "bake",
+  "--file",
+  "../../docker-upstream/image/docker-bake.hcl",
+  "test-release-amd64",
+  "--load",
+]
