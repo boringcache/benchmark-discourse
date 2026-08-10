@@ -97,6 +97,13 @@ def main() -> int:
             "composite action does not select the architecture-specific test plan",
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
+        require("refs/heads/tests-passed" in action, "rolling cache does not follow the image's external Discourse source")
+        require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
+        require("-${tests_passed_sha}" in action, "rolling cache scope omits the external Discourse source")
+        require(
+            "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
+            "upstream image specs no longer select the tests-passed branch",
+        )
         require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
         runner = (ROOT / "scripts/run-discourse-plan.py").read_text()
         require('cwd=UPSTREAM_IMAGE' in runner, "plans must run from upstream's image directory")

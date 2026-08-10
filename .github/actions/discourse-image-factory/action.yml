@@ -58,16 +58,25 @@ runs:
         ARCH: ${{ inputs.arch }}
       run: |
         set -euo pipefail
+        tests_passed_sha="$(git -C upstream rev-parse HEAD)"
+        read -r remote_tests_passed_sha _ < <(
+          git ls-remote https://github.com/discourse/discourse.git refs/heads/tests-passed
+        )
+        if [[ "$remote_tests_passed_sha" != "$tests_passed_sha" ]]; then
+          echo "Pinned Discourse source no longer matches refs/heads/tests-passed." >&2
+          exit 1
+        fi
         ref_slug="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
         ref_slug="${ref_slug#-}"
         ref_slug="${ref_slug%-}"
         ref_slug="${ref_slug:-main}"
         if [[ "$CACHE_LANE" == "rolling" ]]; then
-          cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"
+          cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}-${tests_passed_sha}"
         else
           cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${ARCH}"
         fi
         echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
+        echo "discourse_source_sha=${tests_passed_sha}" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C docker-upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
     - name: Start image-factory timing
