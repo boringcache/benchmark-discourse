@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tomllib
 from pathlib import Path
@@ -97,6 +98,10 @@ def main() -> int:
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
         require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
+        require(
+            os.access(ROOT / "scripts/install-boringcache-cli.sh", os.X_OK),
+            "CLI installer must be executable",
+        )
     except (KeyError, OSError, RecipeMismatch, tomllib.TOMLDecodeError) as error:
         print(f"Discourse recipe mismatch: {error}", file=sys.stderr)
         return 1
