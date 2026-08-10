@@ -8,6 +8,5 @@ fail-on-cache-error = true
 metadata-hints = ["benchmark=discourse", "upstream-job=base"]
 command = [
   "docker", "buildx", "bake",
-  "--file", "docker-upstream/image/docker-bake.hcl",
   "base-runtime-deps", "--no-cache", "--load",
 ]

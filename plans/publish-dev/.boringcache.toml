@@ -10,11 +10,9 @@ command = [
   "docker",
   "buildx",
   "bake",
-  "--file",
-  "../../docker-upstream/image/docker-bake.hcl",
   "dev",
   "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-dev",
   "--set=*.output=type=registry,push-by-digest=true",
-  "--allow=fs.read=../../docker-upstream/templates",
+  "--allow=fs.read=../templates",
   "--metadata-file=/tmp/dev.json",
 ]

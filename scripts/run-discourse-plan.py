@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -12,6 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+UPSTREAM_IMAGE = ROOT / "docker-upstream/image"
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--provider", choices=("actions-cache", "boringcache"), required=True)
     parser.add_argument("--cache-scope", required=True)
     parser.add_argument("--read-only", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
 
@@ -46,7 +49,9 @@ def main() -> int:
                     f"--set=*.cache-to=type=gha,scope={args.cache_scope},mode=max",
                 )
             )
-        return subprocess.run(command, cwd=plan_dir, check=False).returncode
+        if args.dry_run:
+            command.append("--print")
+        return subprocess.run(command, cwd=UPSTREAM_IMAGE, check=False).returncode
 
     boringcache = [
         "boringcache",
@@ -57,7 +62,17 @@ def main() -> int:
     ]
     if args.read_only:
         boringcache.append("--read-only")
-    return subprocess.run(boringcache, cwd=plan_dir, check=False, env=os.environ.copy()).returncode
+    if args.dry_run:
+        boringcache.extend(("--dry-run", "--json"))
+
+    active_config = UPSTREAM_IMAGE / ".boringcache.toml"
+    if active_config.exists():
+        raise SystemExit(f"Refusing to overwrite {active_config}")
+    shutil.copyfile(plan_dir / ".boringcache.toml", active_config)
+    try:
+        return subprocess.run(boringcache, cwd=UPSTREAM_IMAGE, check=False, env=os.environ.copy()).returncode
+    finally:
+        active_config.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

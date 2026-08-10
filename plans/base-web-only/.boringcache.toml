@@ -10,8 +10,6 @@ command = [
   "docker",
   "buildx",
   "bake",
-  "--file",
-  "../../docker-upstream/image/docker-bake.hcl",
   "base-web-only",
   "--load",
 ]

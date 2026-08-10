@@ -10,8 +10,6 @@ command = [
   "docker",
   "buildx",
   "bake",
-  "--file",
-  "../../docker-upstream/image/docker-bake.hcl",
   "test",
   "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-test",
   "--set=*.output=type=registry,push-by-digest=true",

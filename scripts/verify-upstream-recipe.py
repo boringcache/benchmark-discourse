@@ -28,7 +28,7 @@ PLANS = {
         "dev",
         "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-dev",
         "--set=*.output=type=registry,push-by-digest=true",
-        "--allow=fs.read=../../docker-upstream/templates",
+        "--allow=fs.read=../templates",
         "--metadata-file=/tmp/dev.json",
     ],
     "publish-base": [
@@ -50,14 +50,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def expected_command(arguments: list[str]) -> list[str]:
-    return [
-        "docker",
-        "buildx",
-        "bake",
-        "--file",
-        "../../docker-upstream/image/docker-bake.hcl",
-        *arguments,
-    ]
+    return ["docker", "buildx", "bake", *arguments]
 
 
 def main() -> int:
@@ -84,6 +77,13 @@ def main() -> int:
             require(adapter["no-platform"] is True, f"{name} must keep one explicit cache cohort")
             require(adapter["no-git"] is True, f"{name} must not derive an ambient Git suffix")
 
+        with (ROOT / ".boringcache.toml").open("rb") as config_file:
+            root_adapter = tomllib.load(config_file)["adapters"]["docker"]
+        require(
+            root_adapter["command"] == expected_command(PLANS["base-runtime-deps"]),
+            "root default plan drifted",
+        )
+
         action = (ROOT / ".github/actions/discourse-image-factory/action.yml").read_text()
         rolling = (ROOT / ".github/workflows/discourse-image-factory.yml").read_text()
         fresh = (ROOT / ".github/workflows/discourse-image-factory-fresh.yml").read_text()
@@ -98,6 +98,9 @@ def main() -> int:
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
         require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
+        runner = (ROOT / "scripts/run-discourse-plan.py").read_text()
+        require('cwd=UPSTREAM_IMAGE' in runner, "plans must run from upstream's image directory")
+        require("shutil.copyfile" in runner, "BoringCache must consume the selected plan from upstream's image directory")
         require(
             os.access(ROOT / "scripts/install-boringcache-cli.sh", os.X_OK),
             "CLI installer must be executable",
