@@ -99,7 +99,14 @@ def main() -> int:
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
         require("refs/heads/tests-passed" in action, "rolling cache does not follow the image's external Discourse source")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
-        require("-${tests_passed_sha}" in action, "rolling cache scope omits the external Discourse source")
+        require(
+            'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"' in action,
+            "rolling cache scope must stay stable across upstream commits",
+        )
+        require(
+            'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}-${tests_passed_sha}"' not in action,
+            "rolling cache scope must not turn every upstream commit into a cold cohort",
+        )
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
             "upstream image specs no longer select the tests-passed branch",

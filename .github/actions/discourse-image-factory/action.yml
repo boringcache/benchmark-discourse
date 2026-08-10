@@ -71,7 +71,7 @@ runs:
         ref_slug="${ref_slug%-}"
         ref_slug="${ref_slug:-main}"
         if [[ "$CACHE_LANE" == "rolling" ]]; then
-          cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}-${tests_passed_sha}"
+          cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"
         else
           cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${ARCH}"
         fi
