@@ -59,5 +59,27 @@ jobs:
       - uses: actions/download-artifact@v6
         with: {pattern: "phase-*", path: phase-evidence}
       - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse upstream image-factory rolling benchmark" --input-dir phase-evidence --output-dir benchmark-results
-      - uses: actions/upload-artifact@v6
-        with: {name: discourse-image-factory-rolling-report, path: benchmark-results/, if-no-files-found: error}
+      - name: Retain the BoringCache amd64 rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-image-factory${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling
+          path: benchmark-results/discourse-image-factory${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the GitHub Actions amd64 rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling
+          path: benchmark-results/discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the BoringCache arm64 rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-image-factory${{ inputs.benchmark_id_suffix }}-boringcache-arm64-rolling
+          path: benchmark-results/discourse-image-factory${{ inputs.benchmark_id_suffix }}-boringcache-arm64-rolling.json
+          if-no-files-found: error
+      - name: Retain the GitHub Actions arm64 rolling result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-arm64-rolling
+          path: benchmark-results/discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-arm64-rolling.json
+          if-no-files-found: error

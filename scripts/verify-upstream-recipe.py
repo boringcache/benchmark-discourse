@@ -97,8 +97,8 @@ def main() -> int:
             "composite action does not select the architecture-specific test plan",
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
-        require("refs/heads/tests-passed" in action, "rolling cache does not follow the image's external Discourse source")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
+        require("git ls-remote" not in action, "benchmark execution must not race a moving upstream branch")
         require(
             'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"' in action,
             "rolling cache scope must stay stable across upstream commits",
@@ -110,6 +110,13 @@ def main() -> int:
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
             "upstream image specs no longer select the tests-passed branch",
+        )
+        gitmodules = (ROOT / ".gitmodules").read_text()
+        require("branch = tests-passed" in gitmodules, "source sync must follow Discourse tests-passed")
+        sync = (ROOT / ".github/workflows/sync.yml").read_text()
+        require(
+            "git submodule update --init --remote --checkout upstream docker-upstream" in sync,
+            "source sync must pin the configured upstream branches exactly",
         )
         require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
         runner = (ROOT / "scripts/run-discourse-plan.py").read_text()

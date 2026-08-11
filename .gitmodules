@@ -1,6 +1,7 @@
 [submodule "upstream"]
 	path = upstream
 	url = https://github.com/discourse/discourse.git
+	branch = tests-passed
 	shallow = true
 [submodule "docker-upstream"]
 	path = docker-upstream

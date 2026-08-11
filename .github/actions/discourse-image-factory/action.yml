@@ -59,13 +59,6 @@ runs:
       run: |
         set -euo pipefail
         tests_passed_sha="$(git -C upstream rev-parse HEAD)"
-        read -r remote_tests_passed_sha _ < <(
-          git ls-remote https://github.com/discourse/discourse.git refs/heads/tests-passed
-        )
-        if [[ "$remote_tests_passed_sha" != "$tests_passed_sha" ]]; then
-          echo "Pinned Discourse source no longer matches refs/heads/tests-passed." >&2
-          exit 1
-        fi
         ref_slug="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
         ref_slug="${ref_slug#-}"
         ref_slug="${ref_slug%-}"
