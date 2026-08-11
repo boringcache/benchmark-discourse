@@ -115,8 +115,16 @@ def main() -> int:
         require("branch = tests-passed" in gitmodules, "source sync must follow Discourse tests-passed")
         sync = (ROOT / ".github/workflows/sync.yml").read_text()
         require(
-            "git submodule update --init --remote --checkout upstream docker-upstream" in sync,
-            "source sync must pin the configured upstream branches exactly",
+            "git -C upstream fetch --depth=1 origin refs/heads/tests-passed" in sync,
+            "source sync must fetch Discourse tests-passed explicitly",
+        )
+        require(
+            "git -C upstream checkout --detach FETCH_HEAD" in sync,
+            "source sync must pin the fetched Discourse source",
+        )
+        require(
+            "git submodule update --init --remote --checkout docker-upstream" in sync,
+            "source sync must update the Docker recipe from its configured remote",
         )
         require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
         runner = (ROOT / "scripts/run-discourse-plan.py").read_text()
