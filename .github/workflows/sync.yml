@@ -31,7 +31,10 @@ jobs:
           git config --global user.email "boringcache-bot@users.noreply.github.com"
 
           git submodule sync --recursive
-          git submodule update --init --remote --checkout upstream docker-upstream
+          git submodule update --init --checkout upstream
+          git -C upstream fetch --depth=1 origin refs/heads/tests-passed
+          git -C upstream checkout --detach FETCH_HEAD
+          git submodule update --init --remote --checkout docker-upstream
 
           github_repo_slug() {
             local url="$1"
