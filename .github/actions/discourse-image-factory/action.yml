@@ -104,7 +104,7 @@ runs:
           bash "$installer"
         fi
         echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
-        "${HOME}/.local/bin/boringcache" --version
+        boringcache --version
 
     - name: Select the cache cohort
       id: scope
