@@ -108,6 +108,7 @@ runs:
         BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BORINGCACHE_MANAGED_BUILDKIT_LOG_PATH: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
         READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
+        RUST_LOG: warn
       run: |
         set -euo pipefail
         args=()
