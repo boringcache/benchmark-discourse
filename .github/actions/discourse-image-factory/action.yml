@@ -6,6 +6,10 @@ inputs:
   phase: {required: true}
   arch: {required: true}
   benchmark_id: {required: true}
+  cache_profile: {required: false, default: ""}
+  report_strategy: {required: false, default: ""}
+  discourse_ref: {required: false, default: ""}
+  docker_ref: {required: false, default: ""}
   cli_version: {required: false, default: ""}
   buildkit_image: {required: false, default: ""}
 runs:
@@ -18,9 +22,48 @@ runs:
 
     - name: Checkout pinned Discourse sources
       shell: bash
+      env:
+        DISCOURSE_REF: ${{ inputs.discourse_ref }}
+        DOCKER_REF: ${{ inputs.docker_ref }}
       run: |
+        set -euo pipefail
         git submodule sync --recursive
         git -c protocol.version=2 submodule update --init --depth 1 --recommend-shallow --jobs 4 upstream docker-upstream
+
+        checkout_immutable_ref() {
+          local repository="$1"
+          local requested_ref="$2"
+          local label="$3"
+          local depth="$4"
+          if [[ -z "$requested_ref" ]]; then
+            return
+          fi
+          if [[ ! "$requested_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "$label ref must be a full immutable commit SHA: $requested_ref" >&2
+            exit 1
+          fi
+          git -C "$repository" fetch --depth "$depth" origin "$requested_ref"
+          git -C "$repository" checkout --detach FETCH_HEAD
+        }
+
+        checkout_immutable_ref upstream "$DISCOURSE_REF" "Discourse" 1
+        checkout_immutable_ref docker-upstream "$DOCKER_REF" "discourse_docker" 128
+
+        if [[ -n "$DOCKER_REF" ]]; then
+          mozilla_key_fix="a68d4b8707fd653697e8b6b27b336d093dbed5e4"
+          if ! git -C docker-upstream cat-file -e "${mozilla_key_fix}^{commit}" 2>/dev/null; then
+            git -C docker-upstream fetch --depth 1 origin "$mozilla_key_fix"
+          fi
+          if ! git -C docker-upstream merge-base --is-ancestor "$mozilla_key_fix" HEAD; then
+            if [[ "$(git -C docker-upstream rev-parse --is-shallow-repository)" == "true" ]]; then
+              git -C docker-upstream fetch --unshallow origin
+            fi
+          fi
+          if ! git -C docker-upstream merge-base --is-ancestor "$mozilla_key_fix" HEAD; then
+            echo "discourse_docker ref must contain the Mozilla signing-key fix $mozilla_key_fix" >&2
+            exit 1
+          fi
+        fi
 
     - name: Verify the committed image-factory plans
       shell: bash
@@ -31,6 +74,12 @@ runs:
       env:
         PREPARE_PHASE: ${{ inputs.phase == 'warm' && 'warm1' || 'base' }}
       run: ./scripts/prepare-source.sh "$PREPARE_PHASE"
+
+    - name: Prepare the benchmark cache profile
+      shell: bash
+      env:
+        CACHE_PROFILE: ${{ inputs.cache_profile }}
+      run: python3 ./scripts/prepare_discourse_cache_profile.py "${CACHE_PROFILE:-baseline}"
 
     - name: Set up Buildx for the GitHub Actions comparison
       if: inputs.strategy == 'actions-cache'
@@ -62,6 +111,7 @@ runs:
       env:
         BENCHMARK_ID: ${{ inputs.benchmark_id }}
         CACHE_LANE: ${{ inputs.cache_lane }}
+        CACHE_PROFILE: ${{ inputs.cache_profile }}
         ARCH: ${{ inputs.arch }}
       run: |
         set -euo pipefail
@@ -70,10 +120,11 @@ runs:
         ref_slug="${ref_slug#-}"
         ref_slug="${ref_slug%-}"
         ref_slug="${ref_slug:-main}"
+        profile_slug="${CACHE_PROFILE:+-${CACHE_PROFILE}}"
         if [[ "$CACHE_LANE" == "rolling" ]]; then
-          cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"
+          cache_scope="${BENCHMARK_ID}${profile_slug}-rolling-${ref_slug}-${ARCH}"
         else
-          cache_scope="${BENCHMARK_ID}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${ARCH}"
+          cache_scope="${BENCHMARK_ID}${profile_slug}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${ARCH}"
         fi
         echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
         echo "discourse_source_sha=${tests_passed_sha}" >> "$GITHUB_OUTPUT"
@@ -108,12 +159,16 @@ runs:
         BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BORINGCACHE_MANAGED_BUILDKIT_LOG_PATH: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
         READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
+        CACHE_PROFILE: ${{ inputs.cache_profile }}
         RUST_LOG: warn
       run: |
         set -euo pipefail
         args=()
         if [[ "$READ_ONLY" == "true" ]]; then
           args+=(--read-only)
+        fi
+        if [[ "$CACHE_PROFILE" == "bundler" ]]; then
+          args+=(--mount-cache)
         fi
         boringcache docker "${args[@]}"
 
@@ -147,13 +202,14 @@ runs:
       shell: bash
       env:
         BENCHMARK_ID: ${{ inputs.benchmark_id }}
-        STRATEGY: ${{ inputs.strategy }}
+        STRATEGY: ${{ inputs.report_strategy || inputs.strategy }}
         CACHE_LANE: ${{ inputs.cache_lane }}
         REPORT_PHASE: ${{ inputs.cache_lane == 'rolling' && 'commit' || inputs.phase == 'warm' && 'warm' || 'cold' }}
         WORKFLOW_STARTED_AT: ${{ steps.workflow_timer.outputs.started_at }}
         BUILD_SECONDS: ${{ steps.timing.outputs.build_seconds }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
         SOURCE_SHA: ${{ steps.scope.outputs.source_sha }}
+        DISCOURSE_SOURCE_SHA: ${{ steps.scope.outputs.discourse_source_sha }}
         ARCH: ${{ inputs.arch }}
       run: |
         python3 ./scripts/benchmark-report.py phase \
@@ -168,11 +224,13 @@ runs:
           --cache-tag "$CACHE_SCOPE" \
           --workspace boringcache/benchmark-discourse \
           --source-repository discourse/discourse_docker \
-          --source-sha "$SOURCE_SHA"
+          --source-sha "$SOURCE_SHA" \
+          --workload-repository discourse/discourse \
+          --workload-sha "$DISCOURSE_SOURCE_SHA"
 
     - name: Retain benchmark evidence
       uses: actions/upload-artifact@v6
       with:
-        name: phase-${{ inputs.benchmark_id }}-${{ inputs.strategy }}-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}
+        name: phase-${{ inputs.benchmark_id }}-${{ inputs.report_strategy || inputs.strategy }}-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}
         path: benchmark-results/
         if-no-files-found: error

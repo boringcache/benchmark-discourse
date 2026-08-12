@@ -20,6 +20,7 @@ PRODUCT_REF_FIELDS = (
 PROVIDER_LABELS = {
     "actions-cache": "GitHub Actions",
     "boringcache": "BoringCache",
+    "boringcache-bundler": "BoringCache + Bundler mount",
     "boringcache-mountcache": "BoringCache mountcache",
     "boringcache-native": "BoringCache native",
     "boringcache-toolcache": "BoringCache toolcache",
@@ -71,6 +72,8 @@ def parse_args() -> argparse.Namespace:
     phase.add_argument("--workspace", default="")
     phase.add_argument("--source-repository", default="")
     phase.add_argument("--source-sha", default="")
+    phase.add_argument("--workload-repository", default="")
+    phase.add_argument("--workload-sha", default="")
     phase.add_argument("--evidence")
     phase.add_argument("--output-dir", default="benchmark-results")
 
@@ -181,6 +184,8 @@ def write_phase(args: argparse.Namespace) -> int:
         "source": {
             "repository": args.source_repository or None,
             "sha": args.source_sha or None,
+            "workload_repository": args.workload_repository or None,
+            "workload_sha": args.workload_sha or None,
         },
         "product_refs": evidence_product_refs(evidence),
         "action": evidence_action_versions(evidence),
@@ -334,6 +339,9 @@ def render_markdown(title: str, lanes: dict[tuple[str, str, str, str], dict[str,
     if source and source.get("repository"):
         lines.append(f"Source: `{source['repository']}@{source['sha'][:7]}`")
         lines.append("")
+        if source.get("workload_repository") and source.get("workload_sha"):
+            lines.append(f"Workload: `{source['workload_repository']}@{source['workload_sha'][:7]}`")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -362,7 +370,10 @@ def render_benchmark(
     for lane in lane_names:
         baseline = lanes.get((BASELINE_STRATEGY, "", lane))
         candidate = lanes.get((CANDIDATE_STRATEGY, "", lane))
-        reference = candidate or baseline
+        reference = candidate or baseline or next(
+            (value for (strategy, variant, item), value in lanes.items() if item == lane),
+            None,
+        )
         if reference is None:
             continue
 

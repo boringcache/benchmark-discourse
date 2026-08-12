@@ -7,9 +7,12 @@ import sys
 import tomllib
 from pathlib import Path
 
+from prepare_discourse_cache_profile import ProfileMismatch, render
+
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_WORKFLOW = ROOT / "docker-upstream/.github/workflows/build.yml"
+UPSTREAM_DOCKERFILE = ROOT / "docker-upstream/image/base/Dockerfile"
 PLANS = {
     "fresh-amd64": ("fresh", "amd64"),
     "fresh-arm64": ("fresh", "arm64"),
@@ -79,6 +82,20 @@ def main() -> int:
         rolling = (ROOT / ".github/workflows/discourse-image-factory.yml").read_text()
         fresh = (ROOT / ".github/workflows/discourse-image-factory-fresh.yml").read_text()
         require("discourse-dev.Dockerfile" not in action + rolling + fresh, "custom Dockerfile returned")
+        dockerfile = UPSTREAM_DOCKERFILE.read_text()
+        require(render(dockerfile, "baseline") == dockerfile, "baseline cache profile must leave upstream unchanged")
+        bundler_profile = render(dockerfile, "bundler")
+        require(
+            "--mount=type=cache,id=discourse-bundler,target=/home/discourse/.bundle/cache,uid=1000,gid=1000"
+            in bundler_profile,
+            "Bundler cache profile does not mount Bundler's user cache",
+        )
+        require(
+            "BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
+            in bundler_profile,
+            "Bundler cache profile does not enable the global gem cache",
+        )
+        require("discourse-ccache" not in bundler_profile, "paused ccache experiment returned")
         require(
             'PLAN: ${{ format(\'{0}-{1}\', inputs.cache_lane, inputs.arch) }}' in action,
             "composite action does not select the committed lane and architecture plan",
@@ -97,18 +114,35 @@ def main() -> int:
         )
         require("working-directory: docker-upstream/image" in action, "CLI must run the upstream Bake plan")
         require('args+=(--read-only)' in action, "warm builds must restore without publishing")
+        require('args+=(--mount-cache)' in action, "Bundler experiment must enable mount-cache offload")
+        require('[[ "$CACHE_PROFILE" == "bundler" ]]' in action, "mount-cache offload must stay scoped to Bundler")
+        require("--tool-cache ccache" not in action + rolling, "unsupported Docker ccache composition returned")
         require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
         require("publish_images" not in action + rolling + fresh, "benchmark image publication returned")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
         require("git ls-remote" not in action, "benchmark execution must not race a moving upstream branch")
         require(
-            'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}"' in action,
+            "a68d4b8707fd653697e8b6b27b336d093dbed5e4" in action,
+            "historical runs must enforce the Mozilla signing-key boundary",
+        )
+        require(
+            "must be a full immutable commit SHA" in action,
+            "historical source overrides must reject moving refs",
+        )
+        require(
+            'cache_scope="${BENCHMARK_ID}${profile_slug}-rolling-${ref_slug}-${ARCH}"' in action,
             "rolling cache scope must stay stable across upstream commits",
         )
         require(
             'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}-${tests_passed_sha}"' not in action,
             "rolling cache scope must not turn every upstream commit into a cold cohort",
         )
+        require(
+            action.index("Prepare clean Discourse sources") < action.index("Prepare the benchmark cache profile"),
+            "source cleanup would erase the benchmark cache profile",
+        )
+        require("bundler_cache_experiment" in rolling, "Bundler workflow-dispatch lane is missing")
+        require("cache_profile: bundler" in rolling, "Bundler lane does not select the Bundler profile")
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
             "upstream image specs no longer select the tests-passed branch",
@@ -136,7 +170,7 @@ def main() -> int:
         require('destination = UPSTREAM_IMAGE / ".boringcache.toml"' in selector, "selected plan must reach the Action working directory")
         require("destination.write_text(updated)" in selector, "selected plan must be materialized before the Action runs")
         require('"boringcache"' not in selector, "plan selection must not invoke the BoringCache product")
-    except (KeyError, OSError, RecipeMismatch, tomllib.TOMLDecodeError) as error:
+    except (KeyError, OSError, ProfileMismatch, RecipeMismatch, tomllib.TOMLDecodeError) as error:
         print(f"Discourse recipe mismatch: {error}", file=sys.stderr)
         return 1
 

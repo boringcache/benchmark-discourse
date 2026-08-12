@@ -7,6 +7,9 @@ on:
       cli_version: {description: "Optional exact BoringCache CLI release or prerelease tag.", required: false, type: string, default: ""}
       buildkit_image: {description: "Optional managed BuildKit image canary.", required: false, type: string, default: ""}
       benchmark_id_suffix: {description: "Optional suffix for an isolated comparison.", required: false, type: string, default: ""}
+      bundler_cache_experiment: {description: "Run the isolated Bundler mount-cache lane on amd64.", required: false, type: boolean, default: false}
+      discourse_ref: {description: "Optional full Discourse commit SHA for a historical run.", required: false, type: string, default: ""}
+      docker_ref: {description: "Optional full discourse_docker commit SHA at or after the Mozilla-key fix.", required: false, type: string, default: ""}
   push:
     branches: [main]
     paths: [".boringcache.toml", ".gitmodules", "plans/**", "scripts/**", ".github/actions/discourse-image-factory/**", "upstream", "docker-upstream"]
@@ -24,6 +27,7 @@ env:
 jobs:
   commit:
     name: ${{ matrix.provider }} ${{ matrix.arch }} commit
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.bundler_cache_experiment }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     env:
@@ -45,6 +49,36 @@ jobs:
           phase: publish
           arch: ${{ matrix.arch }}
           benchmark_id: ${{ format('discourse-image-factory{0}', inputs.benchmark_id_suffix) }}
+          discourse_ref: ${{ inputs.discourse_ref }}
+          docker_ref: ${{ inputs.docker_ref }}
+          cli_version: ${{ inputs.cli_version }}
+          buildkit_image: ${{ inputs.buildkit_image }}
+
+  bundler:
+    name: ${{ matrix.provider }} amd64 commit
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.bundler_cache_experiment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {provider: GitHub Actions control, strategy: actions-cache, report_strategy: actions-cache, cache_profile: ""}
+          - {provider: BoringCache control, strategy: boringcache, report_strategy: boringcache, cache_profile: ""}
+          - {provider: BoringCache + Bundler mount, strategy: boringcache, report_strategy: boringcache-bundler, cache_profile: bundler}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-image-factory
+        with:
+          strategy: ${{ matrix.strategy }}
+          report_strategy: ${{ matrix.report_strategy }}
+          cache_profile: ${{ matrix.cache_profile }}
+          cache_lane: rolling
+          phase: publish
+          arch: amd64
+          benchmark_id: ${{ format('discourse-bundler-cache{0}', inputs.benchmark_id_suffix) }}
+          discourse_ref: ${{ inputs.discourse_ref }}
+          docker_ref: ${{ inputs.docker_ref }}
           cli_version: ${{ inputs.cli_version }}
           buildkit_image: ${{ inputs.buildkit_image }}
 
@@ -55,7 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v6
-        with: {pattern: "phase-*", path: phase-evidence}
+        with: {pattern: "phase-discourse-image-factory${{ inputs.benchmark_id_suffix }}-*", path: phase-evidence}
       - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse upstream image-factory rolling benchmark" --input-dir phase-evidence --output-dir benchmark-results
       - name: Retain the BoringCache amd64 rolling result
         uses: actions/upload-artifact@v6
@@ -80,4 +114,34 @@ jobs:
         with:
           name: benchmark-discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-arm64-rolling
           path: benchmark-results/discourse-image-factory${{ inputs.benchmark_id_suffix }}-actions-cache-arm64-rolling.json
+          if-no-files-found: error
+
+  bundler-report:
+    name: Discourse Bundler mount-cache experiment report
+    needs: bundler
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: phase-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-*
+          path: phase-evidence
+      - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse Bundler mount-cache benchmark" --input-dir phase-evidence --output-dir benchmark-results
+      - name: Retain the Bundler mount result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-amd64-rolling
+          path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the BoringCache control result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling
+          path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the GitHub Actions control result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling
+          path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling.json
           if-no-files-found: error
