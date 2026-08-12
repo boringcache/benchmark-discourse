@@ -101,10 +101,22 @@ def main() -> int:
             "composite action does not select the committed lane and architecture plan",
         )
         require(
+            action.count('ARCH: ${{ inputs.arch }}') == 4,
+            "composite action must pin architecture-sensitive scope, build, and report steps",
+        )
+        require(
             'select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"' in action,
             "composite action does not materialize the selected cache cohort",
         )
-        require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
+        require("docker run --rm" in action, "upstream test invocation is missing")
+        require(
+            "timeout --foreground --signal=TERM --kill-after=1m 45m" in action,
+            "upstream image specs must not hang a benchmark lane indefinitely",
+        )
+        require(
+            '-e COMMIT_HASH="$DISCOURSE_SOURCE_SHA"' in action,
+            "upstream image specs must test the reported Discourse source",
+        )
         require(action.count("boringcache docker") == 1, "BoringCache path must use one CLI-owned Docker lifecycle")
         require("https://install.boringcache.com/install.sh" in action, "BoringCache path must use the public installer")
         require("CLI_VERSION: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
