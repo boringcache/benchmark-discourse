@@ -10,7 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_WORKFLOW = ROOT / "docker-upstream/.github/workflows/build.yml"
-ACTION_SHA = "1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4"
 PLANS = {
     "fresh-amd64": ("fresh", "amd64"),
     "fresh-arm64": ("fresh", "arm64"),
@@ -89,18 +88,15 @@ def main() -> int:
             "composite action does not materialize the selected cache cohort",
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
+        require(action.count("boringcache docker") == 1, "BoringCache path must use one CLI-owned Docker lifecycle")
+        require("https://install.boringcache.com/install.sh" in action, "BoringCache path must use the public installer")
+        require("CLI_VERSION: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
         require(
-            f"uses: boringcache/one@{ACTION_SHA}" in action,
-            "BoringCache path must invoke the released Action directly",
-        )
-        require("cli-version: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
-        require(
-            "managed-buildkit-image: ${{ inputs.buildkit_image }}" in action,
+            "BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}" in action,
             "BuildKit canary input is not forwarded",
         )
-        require("working-directory: docker-upstream/image" in action, "Action must run the upstream Bake plan")
-        require("trust-policy: publish" in action, "cold and rolling builds must publish")
-        require("trust-policy: restore" in action, "warm builds must restore without publishing")
+        require("working-directory: docker-upstream/image" in action, "CLI must run the upstream Bake plan")
+        require('args+=(--read-only)' in action, "warm builds must restore without publishing")
         require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
         require("publish_images" not in action + rolling + fresh, "benchmark image publication returned")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")

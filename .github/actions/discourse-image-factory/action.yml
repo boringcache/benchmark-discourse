@@ -36,6 +36,26 @@ runs:
       if: inputs.strategy == 'actions-cache'
       uses: docker/setup-buildx-action@v4
 
+    - name: Install the released BoringCache CLI
+      if: inputs.strategy == 'boringcache'
+      shell: bash
+      env:
+        CLI_VERSION: ${{ inputs.cli_version }}
+      run: |
+        set -euo pipefail
+        installer="$(mktemp)"
+        trap 'rm -f "$installer"' EXIT
+        curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+          https://install.boringcache.com/install.sh -o "$installer"
+        if [[ -n "$CLI_VERSION" ]]; then
+          export BORINGCACHE_INSTALLER_SOURCE_ONLY=1
+          source "$installer"
+          install_binary linux "$(detect_arch)" "$CLI_VERSION"
+        else
+          bash "$installer"
+        fi
+        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+
     - name: Select the cache cohort
       id: scope
       shell: bash
@@ -80,32 +100,20 @@ runs:
         "${{ inputs.cache_lane }}-${{ inputs.arch }}"
         --cache-scope "${{ steps.scope.outputs.cache_scope }}"
 
-    - name: Publish with BoringCache
-      id: publish
-      if: inputs.strategy == 'boringcache' && inputs.phase == 'publish'
-      uses: boringcache/one@1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4 # v1 / 1.19.0
-      with:
-        cli-version: ${{ inputs.cli_version }}
-        setup: none
-        mode: docker
-        trust-policy: publish
-        working-directory: docker-upstream/image
-        fail-on-cache-error: true
-        managed-buildkit-image: ${{ inputs.buildkit_image }}
-
-    - name: Restore with BoringCache
-      id: restore
-      if: inputs.strategy == 'boringcache' && inputs.phase == 'warm'
-      uses: boringcache/one@1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4 # v1 / 1.19.0
-      with:
-        cli-version: ${{ inputs.cli_version }}
-        setup: none
-        mode: docker
-        trust-policy: restore
-        working-directory: docker-upstream/image
-        fail-on-cache-miss: true
-        fail-on-cache-error: true
-        managed-buildkit-image: ${{ inputs.buildkit_image }}
+    - name: Build with BoringCache
+      if: inputs.strategy == 'boringcache'
+      shell: bash
+      working-directory: docker-upstream/image
+      env:
+        BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
+        READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
+      run: |
+        set -euo pipefail
+        args=()
+        if [[ "$READ_ONLY" == "true" ]]; then
+          args+=(--read-only)
+        fi
+        boringcache docker "${args[@]}"
 
     - name: Run upstream's image specs
       shell: bash
@@ -131,12 +139,6 @@ runs:
         WORKFLOW_STARTED_AT: ${{ steps.workflow_timer.outputs.started_at }}
         BUILD_SECONDS: ${{ steps.timing.outputs.build_seconds }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
-        CACHE_HIT: ${{ steps.publish.outputs.cache-hit || steps.restore.outputs.cache-hit }}
-        CACHE_IMPORT_READY: ${{ steps.publish.outputs.docker-cache-import-ready || steps.restore.outputs.docker-cache-import-ready }}
-        CACHE_IMPORT_REFS: ${{ steps.publish.outputs.docker-cache-from-refs || steps.restore.outputs.docker-cache-from-refs }}
-        CACHE_TAG: ${{ steps.publish.outputs.cache-tag || steps.restore.outputs.cache-tag }}
-        CACHE_WORKSPACE: ${{ steps.publish.outputs.workspace || steps.restore.outputs.workspace }}
-        EVIDENCE_PATH: ${{ steps.publish.outputs.evidence-path || steps.restore.outputs.evidence-path }}
         SOURCE_SHA: ${{ steps.scope.outputs.source_sha }}
         ARCH: ${{ inputs.arch }}
       run: |
@@ -149,14 +151,10 @@ runs:
           --variant "$ARCH" \
           --workflow-seconds "$(( $(date +%s) - WORKFLOW_STARTED_AT ))" \
           --build-seconds "$BUILD_SECONDS" \
-          --cache-hit "$CACHE_HIT" \
-          --cache-import-ready "$CACHE_IMPORT_READY" \
-          --cache-import-refs "$CACHE_IMPORT_REFS" \
-          --cache-tag "${CACHE_TAG:-$CACHE_SCOPE}" \
-          --workspace "${CACHE_WORKSPACE:-boringcache/benchmark-discourse}" \
+          --cache-tag "$CACHE_SCOPE" \
+          --workspace boringcache/benchmark-discourse \
           --source-repository discourse/discourse_docker \
-          --source-sha "$SOURCE_SHA" \
-          --evidence "$EVIDENCE_PATH"
+          --source-sha "$SOURCE_SHA"
 
     - name: Retain benchmark evidence
       uses: actions/upload-artifact@v6
