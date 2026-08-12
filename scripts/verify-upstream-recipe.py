@@ -135,6 +135,16 @@ def main() -> int:
         )
         ccache_profile = render(dockerfile, "ccache")
         require("    ccache \\\n" in ccache_profile, "ccache profile does not install ccache")
+        require("ARG CCACHE_VERSION=4.13.6" in ccache_profile, "ccache profile must use the CLI-tested version")
+        require(
+            "567b1b648411819590f918f045218c92da14418bdec3b30db94a3b4f5d77cf13" in ccache_profile,
+            "amd64 ccache release must be checksum verified",
+        )
+        require(
+            "fae67fb810e1f0d390409af6603355483572229e19183e68574cd0f851a6fb98" in ccache_profile,
+            "arm64 ccache release must be checksum verified",
+        )
+        require("/usr/bin/ccache" in ccache_profile, "released ccache must replace Debian's older binary")
         require(
             'ENV PATH="/usr/lib/ccache:${PATH}"' in ccache_profile,
             "ccache profile does not select Debian's compiler wrappers",
