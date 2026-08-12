@@ -31,7 +31,7 @@ def add_bundler_cache(source: str) -> str:
         "    sudo -u discourse bundle config --local path ./vendor/bundle &&\\\n"
         "    sudo -u discourse bundle config --local without test development &&\\\n"
         "    sudo -u discourse bundle install --jobs $(nproc --ignore=1) &&\\\n",
-        "RUN --mount=type=cache,id=discourse-bundler,target=/home/discourse/.bundle/cache,uid=1000,gid=1000 \\\n"
+        "RUN --mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000 \\\n"
         "    cd /var/www/discourse &&\\\n"
         "    sudo -u discourse bundle config --local deployment true &&\\\n"
         "    sudo -u discourse bundle config --local path ./vendor/bundle &&\\\n"

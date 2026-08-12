@@ -86,7 +86,7 @@ def main() -> int:
         require(render(dockerfile, "baseline") == dockerfile, "baseline cache profile must leave upstream unchanged")
         bundler_profile = render(dockerfile, "bundler")
         require(
-            "--mount=type=cache,id=discourse-bundler,target=/home/discourse/.bundle/cache,uid=1000,gid=1000"
+            "--mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000"
             in bundler_profile,
             "Bundler cache profile does not mount Bundler's user cache",
         )
