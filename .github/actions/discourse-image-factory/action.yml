@@ -6,8 +6,8 @@ inputs:
   phase: {required: true}
   arch: {required: true}
   benchmark_id: {required: true}
-  cli_version: {required: false, default: "v1.18.1"}
-  publish_images: {required: false, default: "false"}
+  cli_version: {required: false, default: ""}
+  buildkit_image: {required: false, default: ""}
 runs:
   using: composite
   steps:
@@ -35,19 +35,6 @@ runs:
     - name: Set up Buildx for the GitHub Actions comparison
       if: inputs.strategy == 'actions-cache'
       uses: docker/setup-buildx-action@v4
-
-    - name: Install the released BoringCache CLI
-      if: inputs.strategy == 'boringcache'
-      shell: bash
-      run: ./scripts/install-boringcache-cli.sh "${{ inputs.cli_version }}"
-
-    - name: Log in for upstream-equivalent image publication
-      if: inputs.publish_images == 'true'
-      uses: docker/login-action@v4.2.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ github.token }}
 
     - name: Select the cache cohort
       id: scope
@@ -77,45 +64,48 @@ runs:
       shell: bash
       run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-    - name: Build runtime dependencies
+    - name: Select the BoringCache image-factory plan
+      if: inputs.strategy == 'boringcache'
       shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-runtime-deps"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+      env:
+        PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
+        CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
+      run: python3 ./scripts/select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"
 
-    - name: Build slim image
+    - name: Build with the GitHub Actions cache
+      if: inputs.strategy == 'actions-cache'
       shell: bash
       run: >-
-        python3 ./scripts/run-discourse-plan.py "base-slim"
-        --provider "${{ inputs.strategy }}"
+        python3 ./scripts/run-actions-cache-plan.py
+        "${{ inputs.cache_lane }}-${{ inputs.arch }}"
         --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
 
-    - name: Build web-only image
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-web-only"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+    - name: Publish with BoringCache
+      id: publish
+      if: inputs.strategy == 'boringcache' && inputs.phase == 'publish'
+      uses: boringcache/one@1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4 # v1 / 1.19.0
+      with:
+        cli-version: ${{ inputs.cli_version }}
+        setup: none
+        mode: docker
+        trust-policy: publish
+        working-directory: docker-upstream/image
+        fail-on-cache-error: true
+        managed-buildkit-image: ${{ inputs.buildkit_image }}
 
-    - name: Build release image
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-release"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
-
-    - name: Build test image
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "test-release-${{ inputs.arch }}"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+    - name: Restore with BoringCache
+      id: restore
+      if: inputs.strategy == 'boringcache' && inputs.phase == 'warm'
+      uses: boringcache/one@1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4 # v1 / 1.19.0
+      with:
+        cli-version: ${{ inputs.cli_version }}
+        setup: none
+        mode: docker
+        trust-policy: restore
+        working-directory: docker-upstream/image
+        fail-on-cache-miss: true
+        fail-on-cache-error: true
+        managed-buildkit-image: ${{ inputs.buildkit_image }}
 
     - name: Run upstream's image specs
       shell: bash
@@ -123,30 +113,6 @@ runs:
         docker run --rm -e RUBY_ONLY=1 -e USE_TURBO=1 -e SKIP_PLUGINS=1
         -e SKIP_LINT=1 -e DISCOURSE_TURBO_RSPEC_RETRY_AND_LOG_FLAKY_TESTS=1
         "${TEST_IMAGE}:release-${{ inputs.arch }}"
-
-    - name: Build and publish test images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-test"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-
-    - name: Build and publish dev images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-dev"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-
-    - name: Build and publish base images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-base"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
 
     - name: Capture image-factory timing
       id: timing
@@ -165,6 +131,12 @@ runs:
         WORKFLOW_STARTED_AT: ${{ steps.workflow_timer.outputs.started_at }}
         BUILD_SECONDS: ${{ steps.timing.outputs.build_seconds }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
+        CACHE_HIT: ${{ steps.publish.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+        CACHE_IMPORT_READY: ${{ steps.publish.outputs.docker-cache-import-ready || steps.restore.outputs.docker-cache-import-ready }}
+        CACHE_IMPORT_REFS: ${{ steps.publish.outputs.docker-cache-from-refs || steps.restore.outputs.docker-cache-from-refs }}
+        CACHE_TAG: ${{ steps.publish.outputs.cache-tag || steps.restore.outputs.cache-tag }}
+        CACHE_WORKSPACE: ${{ steps.publish.outputs.workspace || steps.restore.outputs.workspace }}
+        EVIDENCE_PATH: ${{ steps.publish.outputs.evidence-path || steps.restore.outputs.evidence-path }}
         SOURCE_SHA: ${{ steps.scope.outputs.source_sha }}
         ARCH: ${{ inputs.arch }}
       run: |
@@ -177,10 +149,14 @@ runs:
           --variant "$ARCH" \
           --workflow-seconds "$(( $(date +%s) - WORKFLOW_STARTED_AT ))" \
           --build-seconds "$BUILD_SECONDS" \
-          --cache-tag "$CACHE_SCOPE" \
-          --workspace boringcache/benchmark-discourse \
+          --cache-hit "$CACHE_HIT" \
+          --cache-import-ready "$CACHE_IMPORT_READY" \
+          --cache-import-refs "$CACHE_IMPORT_REFS" \
+          --cache-tag "${CACHE_TAG:-$CACHE_SCOPE}" \
+          --workspace "${CACHE_WORKSPACE:-boringcache/benchmark-discourse}" \
           --source-repository discourse/discourse_docker \
-          --source-sha "$SOURCE_SHA"
+          --source-sha "$SOURCE_SHA" \
+          --evidence "$EVIDENCE_PATH"
 
     - name: Retain benchmark evidence
       uses: actions/upload-artifact@v6

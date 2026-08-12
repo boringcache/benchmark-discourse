@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import tomllib
 from pathlib import Path
@@ -11,32 +10,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_WORKFLOW = ROOT / "docker-upstream/.github/workflows/build.yml"
+ACTION_SHA = "1d01e5dbf19ce259f921aa353d5e3e4ac5f942e4"
 PLANS = {
-    "base-runtime-deps": ["base-runtime-deps", "--no-cache", "--load"],
-    "base-slim": ["base-slim", "--load"],
-    "base-web-only": ["base-web-only", "--load"],
-    "base-release": ["base-release", "--load"],
-    "test-release-amd64": ["test-release-amd64", "--load"],
-    "test-release-arm64": ["test-release-arm64", "--load"],
-    "publish-test": [
-        "test",
-        "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-test",
-        "--set=*.output=type=registry,push-by-digest=true",
-        "--metadata-file=/tmp/test.json",
-    ],
-    "publish-dev": [
-        "dev",
-        "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-dev",
-        "--set=*.output=type=registry,push-by-digest=true",
-        "--allow=fs.read=../templates",
-        "--metadata-file=/tmp/dev.json",
-    ],
-    "publish-base": [
-        "base",
-        "--set=*.tags=ghcr.io/boringcache/discourse-benchmark-base",
-        "--set=*.output=type=registry,push-by-digest=true",
-        "--metadata-file=/tmp/base.json",
-    ],
+    "fresh-amd64": ("fresh", "amd64"),
+    "fresh-arm64": ("fresh", "arm64"),
+    "rolling-amd64": ("rolling", "amd64"),
+    "rolling-arm64": ("rolling", "arm64"),
 }
 
 
@@ -49,8 +28,19 @@ def require(condition: bool, message: str) -> None:
         raise RecipeMismatch(message)
 
 
-def expected_command(arguments: list[str]) -> list[str]:
-    return ["docker", "buildx", "bake", *arguments]
+def expected_command(arch: str) -> list[str]:
+    return [
+        "docker",
+        "buildx",
+        "bake",
+        "base-runtime-deps",
+        "base-slim",
+        "base-web-only",
+        "base-release",
+        f"test-release-{arch}",
+        "--set=base-runtime-deps-*.no-cache=true",
+        "--load",
+    ]
 
 
 def main() -> int:
@@ -63,40 +53,56 @@ def main() -> int:
             "docker buildx bake base-web-only --load",
             "docker buildx bake base-release --load",
             "docker buildx bake test-release-${{ matrix.arch }} --load",
-            "docker buildx bake test --set=\"*.tags=${TEST_IMAGE}\" --set=\"*.output=type=registry,push-by-digest=true\" --metadata-file=/tmp/test.json",
-            "docker buildx bake dev --set=\"*.tags=${DEV_IMAGE}\" --set=\"*.output=type=registry,push-by-digest=true\" --allow=fs.read=../templates --metadata-file=/tmp/dev.json",
-            "docker buildx bake base --set=\"*.tags=${BASE_IMAGE}\" --set=\"*.output=type=registry,push-by-digest=true\" --metadata-file=/tmp/base.json",
         ):
             require(fragment in workflow, f"upstream base job changed: {fragment}")
 
-        for name, arguments in PLANS.items():
+        for name, (lane, arch) in PLANS.items():
             path = ROOT / "plans" / name / ".boringcache.toml"
             with path.open("rb") as config_file:
                 adapter = tomllib.load(config_file)["adapters"]["docker"]
-            require(adapter["command"] == expected_command(arguments), f"{name} command drifted")
+            require(adapter["command"] == expected_command(arch), f"{name} command drifted")
+            require(adapter["tag"] == f"discourse-image-factory-{lane}-{arch}", f"{name} tag drifted")
             require(adapter["no-platform"] is True, f"{name} must keep one explicit cache cohort")
-            require(adapter["no-git"] is True, f"{name} must not derive an ambient Git suffix")
+            require(adapter["no-git"] is True, f"{name} must use its declared lane and architecture")
 
         with (ROOT / ".boringcache.toml").open("rb") as config_file:
             root_adapter = tomllib.load(config_file)["adapters"]["docker"]
         require(
-            root_adapter["command"] == expected_command(PLANS["base-runtime-deps"]),
+            root_adapter["command"] == expected_command("amd64"),
             "root default plan drifted",
+        )
+        require(
+            root_adapter["tag"] == "discourse-image-factory-rolling-amd64",
+            "root default tag drifted",
         )
 
         action = (ROOT / ".github/actions/discourse-image-factory/action.yml").read_text()
         rolling = (ROOT / ".github/workflows/discourse-image-factory.yml").read_text()
         fresh = (ROOT / ".github/workflows/discourse-image-factory-fresh.yml").read_text()
         require("discourse-dev.Dockerfile" not in action + rolling + fresh, "custom Dockerfile returned")
-        for name in PLANS:
-            if name.startswith("test-release-"):
-                continue
-            require(f'"{name}"' in action, f"composite action does not select {name}")
         require(
-            '"test-release-${{ inputs.arch }}"' in action,
-            "composite action does not select the architecture-specific test plan",
+            'PLAN: ${{ format(\'{0}-{1}\', inputs.cache_lane, inputs.arch) }}' in action,
+            "composite action does not select the committed lane and architecture plan",
+        )
+        require(
+            'select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"' in action,
+            "composite action does not materialize the selected cache cohort",
         )
         require("docker run --rm -e RUBY_ONLY=1" in action, "upstream test invocation is missing")
+        require(
+            f"uses: boringcache/one@{ACTION_SHA}" in action,
+            "BoringCache path must invoke the released Action directly",
+        )
+        require("cli-version: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
+        require(
+            "managed-buildkit-image: ${{ inputs.buildkit_image }}" in action,
+            "BuildKit canary input is not forwarded",
+        )
+        require("working-directory: docker-upstream/image" in action, "Action must run the upstream Bake plan")
+        require("trust-policy: publish" in action, "cold and rolling builds must publish")
+        require("trust-policy: restore" in action, "warm builds must restore without publishing")
+        require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
+        require("publish_images" not in action + rolling + fresh, "benchmark image publication returned")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
         require("git ls-remote" not in action, "benchmark execution must not race a moving upstream branch")
         require(
@@ -126,14 +132,14 @@ def main() -> int:
             "git submodule update --init --remote --checkout docker-upstream" in sync,
             "source sync must update the Docker recipe from its configured remote",
         )
-        require("scope-boringcache-run.sh" not in action + rolling + fresh, "workflows must not rewrite plans")
-        runner = (ROOT / "scripts/run-discourse-plan.py").read_text()
+        runner = (ROOT / "scripts/run-actions-cache-plan.py").read_text()
         require('cwd=UPSTREAM_IMAGE' in runner, "plans must run from upstream's image directory")
-        require("shutil.copyfile" in runner, "BoringCache must consume the selected plan from upstream's image directory")
-        require(
-            os.access(ROOT / "scripts/install-boringcache-cli.sh", os.X_OK),
-            "CLI installer must be executable",
-        )
+        require('"boringcache"' not in runner, "comparison helper must not own the BoringCache lifecycle")
+        require("type=gha" in runner, "comparison helper must retain GitHub Actions Cache")
+        selector = (ROOT / "scripts/select-boringcache-plan.py").read_text()
+        require('destination = UPSTREAM_IMAGE / ".boringcache.toml"' in selector, "selected plan must reach the Action working directory")
+        require("destination.write_text(updated)" in selector, "selected plan must be materialized before the Action runs")
+        require('"boringcache"' not in selector, "plan selection must not invoke the BoringCache product")
     except (KeyError, OSError, RecipeMismatch, tomllib.TOMLDecodeError) as error:
         print(f"Discourse recipe mismatch: {error}", file=sys.stderr)
         return 1
