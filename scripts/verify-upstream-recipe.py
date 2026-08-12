@@ -136,14 +136,7 @@ def main() -> int:
         ccache_profile = render(dockerfile, "ccache")
         require("    ccache \\\n" in ccache_profile, "ccache profile does not install ccache")
         require("ARG CCACHE_VERSION=4.13.6" in ccache_profile, "ccache profile must use the CLI-tested version")
-        require(
-            "567b1b648411819590f918f045218c92da14418bdec3b30db94a3b4f5d77cf13" in ccache_profile,
-            "amd64 ccache release must be checksum verified",
-        )
-        require(
-            "fae67fb810e1f0d390409af6603355483572229e19183e68574cd0f851a6fb98" in ccache_profile,
-            "arm64 ccache release must be checksum verified",
-        )
+        require("COPY ccache /usr/bin/ccache" in ccache_profile, "ccache profile must use the staged release")
         require("/usr/bin/ccache" in ccache_profile, "released ccache must replace Debian's older binary")
         require(
             'ENV PATH="/usr/lib/ccache:${PATH}"' in ccache_profile,
@@ -191,6 +184,14 @@ def main() -> int:
             "image-factory timing must not include the upstream specs",
         )
         require("continue-on-error: true" in action, "benchmark evidence must survive an upstream spec timeout")
+        require(
+            "Stage the CLI-compatible ccache binary" in action,
+            "ccache profile must stage its compatible binary on the native runner",
+        )
+        require(
+            action.index("Stage the CLI-compatible ccache binary") < action.index("Start image-factory timing"),
+            "ccache tool setup must stay outside build timing",
+        )
         require("Smoke test the runtime-deps image" in action, "focused ccache builds must smoke test their output")
         require("if: inputs.run_specs == 'true'" in action, "focused builds must be able to skip unrelated image specs")
         require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
@@ -228,6 +229,17 @@ def main() -> int:
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
             "upstream image specs no longer select the tests-passed branch",
+        )
+
+        ccache_stage = (ROOT / "scripts" / "stage-ccache-binary.sh").read_text()
+        require('version="4.13.6"' in ccache_stage, "staged ccache version drifted")
+        require(
+            "567b1b648411819590f918f045218c92da14418bdec3b30db94a3b4f5d77cf13" in ccache_stage,
+            "amd64 ccache release must be checksum verified",
+        )
+        require(
+            "fae67fb810e1f0d390409af6603355483572229e19183e68574cd0f851a6fb98" in ccache_stage,
+            "arm64 ccache release must be checksum verified",
         )
         gitmodules = (ROOT / ".gitmodules").read_text()
         require("branch = tests-passed" in gitmodules, "source sync must follow Discourse tests-passed")
