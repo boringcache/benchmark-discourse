@@ -7,6 +7,8 @@ inputs:
   arch: {required: true}
   benchmark_id: {required: true}
   cache_profile: {required: false, default: ""}
+  plan_variant: {required: false, default: ""}
+  run_specs: {required: false, default: "true"}
   report_strategy: {required: false, default: ""}
   discourse_ref: {required: false, default: ""}
   docker_ref: {required: false, default: ""}
@@ -146,21 +148,29 @@ runs:
       shell: bash
       env:
         PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
+        PLAN_VARIANT: ${{ inputs.plan_variant }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
-      run: >-
-        python3 ./scripts/select-boringcache-plan.py "$PLAN"
-        --cache-tag "$CACHE_SCOPE"
-        --ccache-tag "${CACHE_SCOPE}-compiler"
+      run: |
+        if [[ -n "$PLAN_VARIANT" ]]; then
+          PLAN="${PLAN}-${PLAN_VARIANT}"
+        fi
+        python3 ./scripts/select-boringcache-plan.py "$PLAN" \
+          --cache-tag "$CACHE_SCOPE" \
+          --ccache-tag "${CACHE_SCOPE}-compiler"
 
     - name: Build with the GitHub Actions cache
       if: inputs.strategy == 'actions-cache'
       shell: bash
       env:
         ARCH: ${{ inputs.arch }}
-      run: >-
-        python3 ./scripts/run-actions-cache-plan.py
-        "${{ inputs.cache_lane }}-${{ inputs.arch }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
+        PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
+        PLAN_VARIANT: ${{ inputs.plan_variant }}
+      run: |
+        if [[ -n "$PLAN_VARIANT" ]]; then
+          PLAN="${PLAN}-${PLAN_VARIANT}"
+        fi
+        python3 ./scripts/run-actions-cache-plan.py "$PLAN" \
+          --cache-scope "${{ steps.scope.outputs.cache_scope }}"
 
     - name: Build with BoringCache
       if: inputs.strategy == 'boringcache'
@@ -194,6 +204,11 @@ runs:
         BUILD_STARTED_AT: ${{ steps.build_timer.outputs.started_at }}
       run: echo "build_seconds=$(( $(date +%s) - BUILD_STARTED_AT ))" >> "$GITHUB_OUTPUT"
 
+    - name: Smoke test the runtime-deps image
+      if: inputs.plan_variant == 'runtime-deps'
+      shell: bash
+      run: docker run --rm "${BASE_IMAGE}:runtime-deps-${{ inputs.arch }}" /bin/true
+
     - name: Show managed BuildKit errors
       if: ${{ inputs.strategy == 'boringcache' && failure() }}
       shell: bash
@@ -207,6 +222,7 @@ runs:
         fi
 
     - name: Run upstream's image specs
+      if: inputs.run_specs == 'true'
       id: image_specs
       continue-on-error: true
       shell: bash
@@ -261,6 +277,6 @@ runs:
         if-no-files-found: error
 
     - name: Enforce the upstream image specs
-      if: steps.image_specs.outcome != 'success'
+      if: inputs.run_specs == 'true' && steps.image_specs.outcome != 'success'
       shell: bash
       run: exit 1

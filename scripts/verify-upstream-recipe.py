@@ -45,6 +45,17 @@ def expected_command(arch: str) -> list[str]:
     ]
 
 
+def expected_runtime_deps_command() -> list[str]:
+    return [
+        "docker",
+        "buildx",
+        "bake",
+        "base-runtime-deps",
+        "--set=base-runtime-deps-*.no-cache=true",
+        "--load",
+    ]
+
+
 def main() -> int:
     try:
         workflow = UPSTREAM_WORKFLOW.read_text()
@@ -72,6 +83,22 @@ def main() -> int:
             require(ccache["no-platform"] is True, f"{name} ccache must use the Docker platform cohort")
             require(ccache["no-git"] is True, f"{name} ccache must use its declared lane")
             require(ccache["fail-on-cache-error"] is True, f"{name} ccache must fail closed")
+
+        runtime_deps_path = ROOT / "plans" / "rolling-amd64-runtime-deps" / ".boringcache.toml"
+        with runtime_deps_path.open("rb") as config_file:
+            runtime_deps_adapters = tomllib.load(config_file)["adapters"]
+        require(
+            runtime_deps_adapters["docker"]["command"] == expected_runtime_deps_command(),
+            "ccache experiment must isolate the forced-no-cache runtime-deps target",
+        )
+        require(
+            runtime_deps_adapters["docker"]["tag"] == "discourse-runtime-deps-rolling-amd64",
+            "runtime-deps Docker tag drifted",
+        )
+        require(
+            runtime_deps_adapters["ccache"]["tag"] == "discourse-ccache-runtime-deps-rolling-amd64",
+            "runtime-deps ccache tag drifted",
+        )
 
         with (ROOT / ".boringcache.toml").open("rb") as config_file:
             root_adapters = tomllib.load(config_file)["adapters"]
@@ -118,6 +145,7 @@ def main() -> int:
             'PLAN: ${{ format(\'{0}-{1}\', inputs.cache_lane, inputs.arch) }}' in action,
             "composite action does not select the committed lane and architecture plan",
         )
+        require('PLAN_VARIANT: ${{ inputs.plan_variant }}' in action, "composite action does not select focused plans")
         require(
             action.count('ARCH: ${{ inputs.arch }}') == 4,
             "composite action must pin architecture-sensitive scope, build, and report steps",
@@ -153,6 +181,8 @@ def main() -> int:
             "image-factory timing must not include the upstream specs",
         )
         require("continue-on-error: true" in action, "benchmark evidence must survive an upstream spec timeout")
+        require("Smoke test the runtime-deps image" in action, "focused ccache builds must smoke test their output")
+        require("if: inputs.run_specs == 'true'" in action, "focused builds must be able to skip unrelated image specs")
         require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
         require("publish_images" not in action + rolling + fresh, "benchmark image publication returned")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
@@ -182,6 +212,8 @@ def main() -> int:
         require("cache_profile: bundler" in rolling, "Bundler lane does not select the Bundler profile")
         require("ccache_experiment" in rolling, "ccache workflow-dispatch lane is missing")
         require("cache_profile: ccache" in rolling, "ccache lane does not select the ccache profile")
+        require("plan_variant: runtime-deps" in rolling, "ccache lane must isolate runtime-deps")
+        require('run_specs: "false"' in rolling, "runtime-deps lane must not invoke the absent test image")
         require("report_strategy: boringcache-ccache" in rolling, "ccache lane does not retain its own result")
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),

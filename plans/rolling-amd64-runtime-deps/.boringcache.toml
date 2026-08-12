@@ -1,0 +1,21 @@
+workspace = "boringcache/benchmark-discourse"
+
+[adapters.docker]
+tag = "discourse-runtime-deps-rolling-amd64"
+no-platform = true
+no-git = true
+fail-on-cache-error = true
+metadata-hints = ["benchmark=discourse", "upstream-job=base-runtime-deps", "lane=rolling", "arch=amd64"]
+command = [
+  "docker", "buildx", "bake",
+  "base-runtime-deps",
+  "--set=base-runtime-deps-*.no-cache=true",
+  "--load",
+]
+
+[adapters.ccache]
+tag = "discourse-ccache-runtime-deps-rolling-amd64"
+no-platform = true
+no-git = true
+fail-on-cache-error = true
+metadata-hints = ["benchmark=discourse", "upstream-job=base-runtime-deps", "lane=rolling", "arch=amd64", "tool=ccache"]
