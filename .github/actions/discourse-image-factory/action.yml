@@ -6,8 +6,8 @@ inputs:
   phase: {required: true}
   arch: {required: true}
   benchmark_id: {required: true}
-  cli_version: {required: false, default: "v1.18.1"}
-  publish_images: {required: false, default: "false"}
+  cli_version: {required: false, default: ""}
+  buildkit_image: {required: false, default: ""}
 runs:
   using: composite
   steps:
@@ -39,15 +39,22 @@ runs:
     - name: Install the released BoringCache CLI
       if: inputs.strategy == 'boringcache'
       shell: bash
-      run: ./scripts/install-boringcache-cli.sh "${{ inputs.cli_version }}"
-
-    - name: Log in for upstream-equivalent image publication
-      if: inputs.publish_images == 'true'
-      uses: docker/login-action@v4.2.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ github.token }}
+      env:
+        CLI_VERSION: ${{ inputs.cli_version }}
+      run: |
+        set -euo pipefail
+        installer="$(mktemp)"
+        trap 'rm -f "$installer"' EXIT
+        curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+          https://install.boringcache.com/install.sh -o "$installer"
+        if [[ -n "$CLI_VERSION" ]]; then
+          export BORINGCACHE_INSTALLER_SOURCE_ONLY=1
+          source "$installer"
+          install_binary linux "$(detect_arch)" "$CLI_VERSION"
+        else
+          bash "$installer"
+        fi
+        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
     - name: Select the cache cohort
       id: scope
@@ -77,45 +84,50 @@ runs:
       shell: bash
       run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-    - name: Build runtime dependencies
+    - name: Select the BoringCache image-factory plan
+      if: inputs.strategy == 'boringcache'
       shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-runtime-deps"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+      env:
+        PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
+        CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
+      run: python3 ./scripts/select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"
 
-    - name: Build slim image
+    - name: Build with the GitHub Actions cache
+      if: inputs.strategy == 'actions-cache'
       shell: bash
       run: >-
-        python3 ./scripts/run-discourse-plan.py "base-slim"
-        --provider "${{ inputs.strategy }}"
+        python3 ./scripts/run-actions-cache-plan.py
+        "${{ inputs.cache_lane }}-${{ inputs.arch }}"
         --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
 
-    - name: Build web-only image
+    - name: Build with BoringCache
+      if: inputs.strategy == 'boringcache'
       shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-web-only"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+      working-directory: docker-upstream/image
+      env:
+        BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
+        BORINGCACHE_MANAGED_BUILDKIT_LOG_PATH: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
+        READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
+        RUST_LOG: warn
+      run: |
+        set -euo pipefail
+        args=()
+        if [[ "$READ_ONLY" == "true" ]]; then
+          args+=(--read-only)
+        fi
+        boringcache docker "${args[@]}"
 
-    - name: Build release image
+    - name: Show managed BuildKit errors
+      if: ${{ inputs.strategy == 'boringcache' && failure() }}
       shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "base-release"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
-
-    - name: Build test image
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "test-release-${{ inputs.arch }}"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-        ${{ inputs.phase == 'warm' && '--read-only' || '' }}
+      env:
+        BUILDKIT_LOG: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
+      run: |
+        if [[ -f "$BUILDKIT_LOG" ]]; then
+          grep -Eai 'error|fail|denied|unauthorized|unexpected|timed? ?out' "$BUILDKIT_LOG" || true
+        else
+          echo "Managed BuildKit log was not written."
+        fi
 
     - name: Run upstream's image specs
       shell: bash
@@ -123,30 +135,6 @@ runs:
         docker run --rm -e RUBY_ONLY=1 -e USE_TURBO=1 -e SKIP_PLUGINS=1
         -e SKIP_LINT=1 -e DISCOURSE_TURBO_RSPEC_RETRY_AND_LOG_FLAKY_TESTS=1
         "${TEST_IMAGE}:release-${{ inputs.arch }}"
-
-    - name: Build and publish test images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-test"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-
-    - name: Build and publish dev images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-dev"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
-
-    - name: Build and publish base images
-      if: inputs.publish_images == 'true'
-      shell: bash
-      run: >-
-        python3 ./scripts/run-discourse-plan.py "publish-base"
-        --provider "${{ inputs.strategy }}"
-        --cache-scope "${{ steps.scope.outputs.cache_scope }}"
 
     - name: Capture image-factory timing
       id: timing
