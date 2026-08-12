@@ -106,6 +106,7 @@ runs:
       working-directory: docker-upstream/image
       env:
         BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
+        BORINGCACHE_MANAGED_BUILDKIT_LOG_PATH: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
         READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
       run: |
         set -euo pipefail
@@ -114,6 +115,18 @@ runs:
           args+=(--read-only)
         fi
         boringcache docker "${args[@]}"
+
+    - name: Show managed BuildKit errors
+      if: ${{ inputs.strategy == 'boringcache' && failure() }}
+      shell: bash
+      env:
+        BUILDKIT_LOG: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
+      run: |
+        if [[ -f "$BUILDKIT_LOG" ]]; then
+          grep -Eai 'error|fail|denied|unauthorized|unexpected|timed? ?out' "$BUILDKIT_LOG" || true
+        else
+          echo "Managed BuildKit log was not written."
+        fi
 
     - name: Run upstream's image specs
       shell: bash
