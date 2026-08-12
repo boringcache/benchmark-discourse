@@ -84,7 +84,7 @@ runs:
       run: python3 ./scripts/prepare_discourse_cache_profile.py "${CACHE_PROFILE:-baseline}"
 
     - name: Stage the CLI-compatible ccache binary
-      if: inputs.cache_profile == 'ccache'
+      if: inputs.cache_profile == 'ccache' || inputs.cache_profile == 'bundler-ccache'
       shell: bash
       run: ./scripts/stage-ccache-binary.sh "${{ inputs.arch }}" docker-upstream/image/base/ccache
 
@@ -201,10 +201,10 @@ runs:
         if [[ "$READ_ONLY" == "true" ]]; then
           args+=(--read-only)
         fi
-        if [[ "$CACHE_PROFILE" == "bundler" ]]; then
+        if [[ "$CACHE_PROFILE" == "bundler" || "$CACHE_PROFILE" == "bundler-ccache" ]]; then
           args+=(--mount-cache)
         fi
-        if [[ "$CACHE_PROFILE" == "ccache" ]]; then
+        if [[ "$CACHE_PROFILE" == "ccache" || "$CACHE_PROFILE" == "bundler-ccache" ]]; then
           args+=(--tool-cache ccache)
         fi
         boringcache docker "${args[@]}"

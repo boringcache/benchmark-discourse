@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker-upstream/image/base/Dockerfile"
-PROFILES = ("baseline", "bundler", "ccache")
+PROFILES = ("baseline", "bundler", "ccache", "bundler-ccache")
 
 
 class ProfileMismatch(RuntimeError):
@@ -76,6 +76,8 @@ def render(source: str, profile: str) -> str:
         return add_bundler_cache(source)
     if profile == "ccache":
         return add_ccache(source)
+    if profile == "bundler-ccache":
+        return add_ccache(add_bundler_cache(source))
     raise ProfileMismatch(f"unknown cache profile: {profile}")
 
 

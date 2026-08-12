@@ -67,6 +67,7 @@ jobs:
           - {provider: GitHub Actions control, strategy: actions-cache, report_strategy: actions-cache, cache_profile: ""}
           - {provider: BoringCache control, strategy: boringcache, report_strategy: boringcache, cache_profile: ""}
           - {provider: BoringCache + Bundler mount, strategy: boringcache, report_strategy: boringcache-bundler, cache_profile: bundler}
+          - {provider: BoringCache + Bundler mount + ccache, strategy: boringcache, report_strategy: boringcache-bundler-ccache, cache_profile: bundler-ccache}
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/discourse-image-factory
@@ -74,6 +75,7 @@ jobs:
           strategy: ${{ matrix.strategy }}
           report_strategy: ${{ matrix.report_strategy }}
           cache_profile: ${{ matrix.cache_profile }}
+          run_specs: "false"
           cache_lane: rolling
           phase: publish
           arch: amd64
@@ -163,6 +165,12 @@ jobs:
         with:
           name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-amd64-rolling
           path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the Bundler mount and ccache result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-ccache-amd64-rolling
+          path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-boringcache-bundler-ccache-amd64-rolling.json
           if-no-files-found: error
       - name: Retain the BoringCache control result
         uses: actions/upload-artifact@v6

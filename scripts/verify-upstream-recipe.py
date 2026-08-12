@@ -144,6 +144,17 @@ def main() -> int:
         )
         require("CCACHE_REMOTE_STORAGE" not in ccache_profile, "the Dockerfile must not own BoringCache's ccache endpoint")
         require("BUNDLE_GLOBAL_GEM_CACHE" not in ccache_profile, "ccache profile must stay isolated from Bundler")
+        combined_profile = render(dockerfile, "bundler-ccache")
+        require(
+            "BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
+            in combined_profile,
+            "combined profile does not enable the Bundler mount cache",
+        )
+        require("COPY ccache /usr/bin/ccache" in combined_profile, "combined profile does not stage ccache")
+        require(
+            'ENV PATH="/usr/lib/ccache:${PATH}"' in combined_profile,
+            "combined profile does not select ccache's compiler wrappers",
+        )
         require(
             'PLAN: ${{ format(\'{0}-{1}\', inputs.cache_lane, inputs.arch) }}' in action,
             "composite action does not select the committed lane and architecture plan",
@@ -176,9 +187,15 @@ def main() -> int:
         require("working-directory: docker-upstream/image" in action, "CLI must run the upstream Bake plan")
         require('args+=(--read-only)' in action, "warm builds must restore without publishing")
         require('args+=(--mount-cache)' in action, "Bundler experiment must enable mount-cache offload")
-        require('[[ "$CACHE_PROFILE" == "bundler" ]]' in action, "mount-cache offload must stay scoped to Bundler")
+        require(
+            '[[ "$CACHE_PROFILE" == "bundler" || "$CACHE_PROFILE" == "bundler-ccache" ]]' in action,
+            "mount-cache offload must stay scoped to Bundler profiles",
+        )
         require('args+=(--tool-cache ccache)' in action, "ccache experiment must use the released Docker tool-cache surface")
-        require('[[ "$CACHE_PROFILE" == "ccache" ]]' in action, "Docker ccache must stay scoped to its experiment")
+        require(
+            '[[ "$CACHE_PROFILE" == "ccache" || "$CACHE_PROFILE" == "bundler-ccache" ]]' in action,
+            "Docker ccache must stay scoped to ccache profiles",
+        )
         require(
             action.index("Capture image-factory timing") < action.index("Run upstream's image specs"),
             "image-factory timing must not include the upstream specs",
@@ -221,6 +238,11 @@ def main() -> int:
         )
         require("bundler_cache_experiment" in rolling, "Bundler workflow-dispatch lane is missing")
         require("cache_profile: bundler" in rolling, "Bundler lane does not select the Bundler profile")
+        require("cache_profile: bundler-ccache" in rolling, "combined lane does not select both cache profiles")
+        require(
+            "report_strategy: boringcache-bundler-ccache" in rolling,
+            "combined lane does not retain its own result",
+        )
         require("ccache_experiment" in rolling, "ccache workflow-dispatch lane is missing")
         require("cache_profile: ccache" in rolling, "ccache lane does not select the ccache profile")
         require("plan_variant: runtime-deps" in rolling, "ccache lane must isolate runtime-deps")
