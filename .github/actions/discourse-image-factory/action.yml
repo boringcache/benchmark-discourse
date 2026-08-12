@@ -104,6 +104,7 @@ runs:
           bash "$installer"
         fi
         echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+        "${HOME}/.local/bin/boringcache" --version
 
     - name: Select the cache cohort
       id: scope
@@ -146,7 +147,10 @@ runs:
       env:
         PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
         CACHE_SCOPE: ${{ steps.scope.outputs.cache_scope }}
-      run: python3 ./scripts/select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"
+      run: >-
+        python3 ./scripts/select-boringcache-plan.py "$PLAN"
+        --cache-tag "$CACHE_SCOPE"
+        --ccache-tag "${CACHE_SCOPE}-compiler"
 
     - name: Build with the GitHub Actions cache
       if: inputs.strategy == 'actions-cache'
@@ -178,7 +182,17 @@ runs:
         if [[ "$CACHE_PROFILE" == "bundler" ]]; then
           args+=(--mount-cache)
         fi
+        if [[ "$CACHE_PROFILE" == "ccache" ]]; then
+          args+=(--tool-cache ccache)
+        fi
         boringcache docker "${args[@]}"
+
+    - name: Capture image-factory timing
+      id: timing
+      shell: bash
+      env:
+        BUILD_STARTED_AT: ${{ steps.build_timer.outputs.started_at }}
+      run: echo "build_seconds=$(( $(date +%s) - BUILD_STARTED_AT ))" >> "$GITHUB_OUTPUT"
 
     - name: Show managed BuildKit errors
       if: ${{ inputs.strategy == 'boringcache' && failure() }}
@@ -193,6 +207,8 @@ runs:
         fi
 
     - name: Run upstream's image specs
+      id: image_specs
+      continue-on-error: true
       shell: bash
       env:
         DISCOURSE_SOURCE_SHA: ${{ steps.scope.outputs.discourse_source_sha }}
@@ -206,13 +222,6 @@ runs:
           -e DISCOURSE_TURBO_RSPEC_RETRY_AND_LOG_FLAKY_TESTS=1 \
           -e COMMIT_HASH="$DISCOURSE_SOURCE_SHA" \
           "${TEST_IMAGE}:release-${{ inputs.arch }}"
-
-    - name: Capture image-factory timing
-      id: timing
-      shell: bash
-      env:
-        BUILD_STARTED_AT: ${{ steps.build_timer.outputs.started_at }}
-      run: echo "build_seconds=$(( $(date +%s) - BUILD_STARTED_AT ))" >> "$GITHUB_OUTPUT"
 
     - name: Write benchmark evidence
       shell: bash
@@ -250,3 +259,8 @@ runs:
         name: phase-${{ inputs.benchmark_id }}-${{ inputs.report_strategy || inputs.strategy }}-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}
         path: benchmark-results/
         if-no-files-found: error
+
+    - name: Enforce the upstream image specs
+      if: steps.image_specs.outcome != 'success'
+      shell: bash
+      run: exit 1

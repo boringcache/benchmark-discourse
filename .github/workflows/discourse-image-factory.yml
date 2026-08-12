@@ -8,6 +8,7 @@ on:
       buildkit_image: {description: "Optional managed BuildKit image canary.", required: false, type: string, default: ""}
       benchmark_id_suffix: {description: "Optional suffix for an isolated comparison.", required: false, type: string, default: ""}
       bundler_cache_experiment: {description: "Run the isolated Bundler mount-cache lane on amd64.", required: false, type: boolean, default: false}
+      ccache_experiment: {description: "Run the isolated Docker ccache tool-cache lane on amd64.", required: false, type: boolean, default: false}
       discourse_ref: {description: "Optional full Discourse commit SHA for a historical run.", required: false, type: string, default: ""}
       docker_ref: {description: "Optional full discourse_docker commit SHA at or after the Mozilla-key fix.", required: false, type: string, default: ""}
   push:
@@ -27,7 +28,7 @@ env:
 jobs:
   commit:
     name: ${{ matrix.provider }} ${{ matrix.arch }} commit
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.bundler_cache_experiment }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.bundler_cache_experiment && !inputs.ccache_experiment) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     env:
@@ -77,6 +78,34 @@ jobs:
           phase: publish
           arch: amd64
           benchmark_id: ${{ format('discourse-bundler-cache{0}', inputs.benchmark_id_suffix) }}
+          discourse_ref: ${{ inputs.discourse_ref }}
+          docker_ref: ${{ inputs.docker_ref }}
+          cli_version: ${{ inputs.cli_version }}
+          buildkit_image: ${{ inputs.buildkit_image }}
+
+  ccache:
+    name: ${{ matrix.provider }} amd64 commit
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.ccache_experiment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {provider: GitHub Actions control, strategy: actions-cache, report_strategy: actions-cache, cache_profile: ""}
+          - {provider: BoringCache control, strategy: boringcache, report_strategy: boringcache, cache_profile: ""}
+          - {provider: BoringCache + ccache, strategy: boringcache, report_strategy: boringcache-ccache, cache_profile: ccache}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/discourse-image-factory
+        with:
+          strategy: ${{ matrix.strategy }}
+          report_strategy: ${{ matrix.report_strategy }}
+          cache_profile: ${{ matrix.cache_profile }}
+          cache_lane: rolling
+          phase: publish
+          arch: amd64
+          benchmark_id: ${{ format('discourse-ccache{0}', inputs.benchmark_id_suffix) }}
           discourse_ref: ${{ inputs.discourse_ref }}
           docker_ref: ${{ inputs.docker_ref }}
           cli_version: ${{ inputs.cli_version }}
@@ -144,4 +173,35 @@ jobs:
         with:
           name: benchmark-discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling
           path: benchmark-results/discourse-bundler-cache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling.json
+          if-no-files-found: error
+
+  ccache-report:
+    name: Discourse ccache tool-cache experiment report
+    needs: ccache
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.ccache_experiment }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: phase-discourse-ccache${{ inputs.benchmark_id_suffix }}-*
+          path: phase-evidence
+      - run: python3 ./scripts/benchmark-report.py summarize --title "Discourse ccache tool-cache benchmark" --input-dir phase-evidence --output-dir benchmark-results
+      - name: Retain the ccache result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-ccache${{ inputs.benchmark_id_suffix }}-boringcache-ccache-amd64-rolling
+          path: benchmark-results/discourse-ccache${{ inputs.benchmark_id_suffix }}-boringcache-ccache-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the BoringCache control result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-ccache${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling
+          path: benchmark-results/discourse-ccache${{ inputs.benchmark_id_suffix }}-boringcache-amd64-rolling.json
+          if-no-files-found: error
+      - name: Retain the GitHub Actions control result
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-discourse-ccache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling
+          path: benchmark-results/discourse-ccache${{ inputs.benchmark_id_suffix }}-actions-cache-amd64-rolling.json
           if-no-files-found: error

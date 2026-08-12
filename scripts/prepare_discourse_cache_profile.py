@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker-upstream/image/base/Dockerfile"
-PROFILES = ("baseline", "bundler")
+PROFILES = ("baseline", "bundler", "ccache")
 
 
 class ProfileMismatch(RuntimeError):
@@ -42,11 +42,34 @@ def add_bundler_cache(source: str) -> str:
     )
 
 
+def add_ccache(source: str) -> str:
+    source = replace_once(
+        source,
+        "    git \\\n"
+        "    cmake \\\n",
+        "    git \\\n"
+        "    ccache \\\n"
+        "    cmake \\\n",
+        "builder package list",
+    )
+    return replace_once(
+        source,
+        "    libbrotli-dev\n\n"
+        "FROM builder AS libheif-builder\n",
+        "    libbrotli-dev\n\n"
+        'ENV PATH="/usr/lib/ccache:${PATH}"\n\n'
+        "FROM builder AS libheif-builder\n",
+        "builder stage boundary",
+    )
+
+
 def render(source: str, profile: str) -> str:
     if profile == "baseline":
         return source
     if profile == "bundler":
         return add_bundler_cache(source)
+    if profile == "ccache":
+        return add_ccache(source)
     raise ProfileMismatch(f"unknown cache profile: {profile}")
 
 

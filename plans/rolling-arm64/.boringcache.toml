@@ -16,3 +16,10 @@ command = [
   "--set=base-runtime-deps-*.no-cache=true",
   "--load",
 ]
+
+[adapters.ccache]
+tag = "discourse-ccache-rolling-arm64"
+no-platform = true
+no-git = true
+fail-on-cache-error = true
+metadata-hints = ["benchmark=discourse", "upstream-job=base", "lane=rolling", "arch=arm64", "tool=ccache"]

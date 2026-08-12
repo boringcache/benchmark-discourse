@@ -61,14 +61,21 @@ def main() -> int:
         for name, (lane, arch) in PLANS.items():
             path = ROOT / "plans" / name / ".boringcache.toml"
             with path.open("rb") as config_file:
-                adapter = tomllib.load(config_file)["adapters"]["docker"]
+                adapters = tomllib.load(config_file)["adapters"]
+            adapter = adapters["docker"]
+            ccache = adapters["ccache"]
             require(adapter["command"] == expected_command(arch), f"{name} command drifted")
             require(adapter["tag"] == f"discourse-image-factory-{lane}-{arch}", f"{name} tag drifted")
             require(adapter["no-platform"] is True, f"{name} must keep one explicit cache cohort")
             require(adapter["no-git"] is True, f"{name} must use its declared lane and architecture")
+            require(ccache["tag"] == f"discourse-ccache-{lane}-{arch}", f"{name} ccache tag drifted")
+            require(ccache["no-platform"] is True, f"{name} ccache must use the Docker platform cohort")
+            require(ccache["no-git"] is True, f"{name} ccache must use its declared lane")
+            require(ccache["fail-on-cache-error"] is True, f"{name} ccache must fail closed")
 
         with (ROOT / ".boringcache.toml").open("rb") as config_file:
-            root_adapter = tomllib.load(config_file)["adapters"]["docker"]
+            root_adapters = tomllib.load(config_file)["adapters"]
+        root_adapter = root_adapters["docker"]
         require(
             root_adapter["command"] == expected_command("amd64"),
             "root default plan drifted",
@@ -76,6 +83,10 @@ def main() -> int:
         require(
             root_adapter["tag"] == "discourse-image-factory-rolling-amd64",
             "root default tag drifted",
+        )
+        require(
+            root_adapters["ccache"]["tag"] == "discourse-ccache-rolling-amd64",
+            "root ccache tag drifted",
         )
 
         action = (ROOT / ".github/actions/discourse-image-factory/action.yml").read_text()
@@ -95,7 +106,14 @@ def main() -> int:
             in bundler_profile,
             "Bundler cache profile does not enable the global gem cache",
         )
-        require("discourse-ccache" not in bundler_profile, "paused ccache experiment returned")
+        ccache_profile = render(dockerfile, "ccache")
+        require("    ccache \\\n" in ccache_profile, "ccache profile does not install ccache")
+        require(
+            'ENV PATH="/usr/lib/ccache:${PATH}"' in ccache_profile,
+            "ccache profile does not select Debian's compiler wrappers",
+        )
+        require("CCACHE_REMOTE_STORAGE" not in ccache_profile, "the Dockerfile must not own BoringCache's ccache endpoint")
+        require("BUNDLE_GLOBAL_GEM_CACHE" not in ccache_profile, "ccache profile must stay isolated from Bundler")
         require(
             'PLAN: ${{ format(\'{0}-{1}\', inputs.cache_lane, inputs.arch) }}' in action,
             "composite action does not select the committed lane and architecture plan",
@@ -105,8 +123,8 @@ def main() -> int:
             "composite action must pin architecture-sensitive scope, build, and report steps",
         )
         require(
-            'select-boringcache-plan.py "$PLAN" --cache-tag "$CACHE_SCOPE"' in action,
-            "composite action does not materialize the selected cache cohort",
+            '--ccache-tag "${CACHE_SCOPE}-compiler"' in action,
+            "composite action does not materialize an isolated ccache cohort",
         )
         require("docker run --rm" in action, "upstream test invocation is missing")
         require(
@@ -128,7 +146,13 @@ def main() -> int:
         require('args+=(--read-only)' in action, "warm builds must restore without publishing")
         require('args+=(--mount-cache)' in action, "Bundler experiment must enable mount-cache offload")
         require('[[ "$CACHE_PROFILE" == "bundler" ]]' in action, "mount-cache offload must stay scoped to Bundler")
-        require("--tool-cache ccache" not in action + rolling, "unsupported Docker ccache composition returned")
+        require('args+=(--tool-cache ccache)' in action, "ccache experiment must use the released Docker tool-cache surface")
+        require('[[ "$CACHE_PROFILE" == "ccache" ]]' in action, "Docker ccache must stay scoped to its experiment")
+        require(
+            action.index("Capture image-factory timing") < action.index("Run upstream's image specs"),
+            "image-factory timing must not include the upstream specs",
+        )
+        require("continue-on-error: true" in action, "benchmark evidence must survive an upstream spec timeout")
         require("run-actions-cache-plan.py" in action, "GitHub Actions comparison path is missing")
         require("publish_images" not in action + rolling + fresh, "benchmark image publication returned")
         require("git -C upstream rev-parse HEAD" in action, "rolling cache does not use the pinned Discourse source")
@@ -156,6 +180,9 @@ def main() -> int:
         )
         require("bundler_cache_experiment" in rolling, "Bundler workflow-dispatch lane is missing")
         require("cache_profile: bundler" in rolling, "Bundler lane does not select the Bundler profile")
+        require("ccache_experiment" in rolling, "ccache workflow-dispatch lane is missing")
+        require("cache_profile: ccache" in rolling, "ccache lane does not select the ccache profile")
+        require("report_strategy: boringcache-ccache" in rolling, "ccache lane does not retain its own result")
         require(
             "origin/tests-passed" in (ROOT / "upstream/script/docker_test.rb").read_text(),
             "upstream image specs no longer select the tests-passed branch",
@@ -182,6 +209,7 @@ def main() -> int:
         selector = (ROOT / "scripts/select-boringcache-plan.py").read_text()
         require('destination = UPSTREAM_IMAGE / ".boringcache.toml"' in selector, "selected plan must reach the Action working directory")
         require("destination.write_text(updated)" in selector, "selected plan must be materialized before the Action runs")
+        require('replace_adapter_tag(updated, "ccache", args.ccache_tag, source)' in selector, "selected plan must isolate ccache tags")
         require('"boringcache"' not in selector, "plan selection must not invoke the BoringCache product")
     except (KeyError, OSError, ProfileMismatch, RecipeMismatch, tomllib.TOMLDecodeError) as error:
         print(f"Discourse recipe mismatch: {error}", file=sys.stderr)
