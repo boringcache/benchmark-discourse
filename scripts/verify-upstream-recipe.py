@@ -133,6 +133,7 @@ def main() -> int:
             'cache_scope="${BENCHMARK_ID}${profile_slug}-rolling-${ref_slug}-${ARCH}"' in action,
             "rolling cache scope must stay stable across upstream commits",
         )
+        require("${#cache_scope} > 80" in action, "long cache scopes must leave room for Bake target names")
         require(
             'cache_scope="${BENCHMARK_ID}-rolling-${ref_slug}-${ARCH}-${tests_passed_sha}"' not in action,
             "rolling cache scope must not turn every upstream commit into a cold cohort",

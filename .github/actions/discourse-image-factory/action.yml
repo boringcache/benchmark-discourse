@@ -126,6 +126,11 @@ runs:
         else
           cache_scope="${BENCHMARK_ID}${profile_slug}-run-r${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}-${ARCH}"
         fi
+        # Managed BuildKit appends target names; leave room under OCI's 128-character tag limit.
+        if (( ${#cache_scope} > 80 )); then
+          scope_hash="$(printf '%s' "$cache_scope" | sha256sum | cut -c1-8)"
+          cache_scope="${cache_scope:0:71}-${scope_hash}"
+        fi
         echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
         echo "discourse_source_sha=${tests_passed_sha}" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C docker-upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
