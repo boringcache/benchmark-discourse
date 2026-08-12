@@ -101,11 +101,18 @@ runs:
         set -euo pipefail
         installer="$(mktemp)"
         trap 'rm -f "$installer"' EXIT
-        curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
+        curl -fsSL --retry 8 --retry-all-errors --connect-timeout 30 --max-time 180 \
+          -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
           https://install.boringcache.com/install.sh -o "$installer"
         if [[ -n "$CLI_VERSION" ]]; then
           export BORINGCACHE_INSTALLER_SOURCE_ONLY=1
           source "$installer"
+          download_file() {
+            local url="$1"
+            local output="$2"
+            curl -fsSL --retry 8 --retry-all-errors --connect-timeout 30 --max-time 180 \
+              "$url" -o "$output"
+          }
           install_binary linux "$(detect_arch)" "$CLI_VERSION"
         else
           bash "$installer"
