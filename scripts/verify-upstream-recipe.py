@@ -129,33 +129,46 @@ def main() -> int:
         bundler_profile = render(dockerfile, "bundler")
         require(bundler_profile == dockerfile, "Bundler profile must use the fork's committed cache mount")
         require(
-            "--mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000"
+            "--mount=type=cache,id=discourse-bundle-${DISCOURSE_BRANCH},target=/home/discourse/.cache/bundle,sharing=locked,uid=1000,gid=1000"
             in bundler_profile,
-            "Bundler cache profile does not mount Bundler's user cache",
+            "Bundler cache profile does not mount the complete installed bundle",
         )
         require(
-            "BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
-            in bundler_profile,
-            "Bundler cache profile does not enable the global gem cache",
+            "cp -a /home/discourse/.cache/bundle/. /var/www/discourse/vendor/bundle/" in bundler_profile,
+            "Bundler cache profile does not materialize the installed bundle into the image",
         )
         require(
-            bundler_profile.count("target=/home/discourse/.local/share/pnpm/store") == 1,
-            "base image must cache the upstream pnpm install",
+            "sudo -u discourse bundle config --local path ./vendor/bundle" in bundler_profile
+            and "sudo -u discourse bundle install --jobs $(nproc --ignore=1)" in bundler_profile
+            and "sudo -u discourse bundle check" in bundler_profile,
+            "base image must repair and validate the materialized vendor bundle",
+        )
+        require(
+            bundler_profile.count("target=/home/discourse/.local/share/pnpm,sharing=locked,uid=1000,gid=1000")
+            == 1,
+            "base image must cache pnpm's complete writable home",
         )
         test_dockerfile = (ROOT / "docker-upstream/image/discourse_test/Dockerfile").read_text()
         require(
-            "--mount=type=cache,id=discourse-bundler-main,target=/home/discourse/.bundle/cache"
+            "--mount=type=cache,id=discourse-bundle-test-main,target=/home/discourse/.cache/bundle"
             in test_dockerfile,
-            "test image must share the main Bundler cache mount",
+            "test image must use a separate complete installed-bundle cache",
         )
         require(
-            "BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
-            in test_dockerfile,
-            "test image must use Bundler's mounted global cache",
+            "cp -a /home/discourse/.cache/bundle/. /var/www/discourse/vendor/bundle/" in test_dockerfile
+            and "sudo -u discourse bundle install --jobs $(nproc --ignore=1)" in test_dockerfile
+            and "sudo -u discourse bundle check" in test_dockerfile,
+            "test image must materialize, repair, and validate its cached installed bundle",
         )
         require(
-            "target=/home/discourse/.local/share/pnpm/store" in test_dockerfile,
-            "test image must cache the upstream pnpm install",
+            "target=/home/discourse/.local/share/pnpm,sharing=locked,uid=1000,gid=1000"
+            in test_dockerfile,
+            "test image must cache pnpm's complete writable home",
+        )
+        require(
+            "install -dm 0755 -o discourse -g discourse /home/discourse/.local/share/pnpm"
+            in test_dockerfile,
+            "test image must make pnpm's writable parent owned by discourse",
         )
         ccache_profile = render(dockerfile, "ccache")
         require("    ccache \\\n" in ccache_profile, "ccache profile does not install ccache")
@@ -168,14 +181,14 @@ def main() -> int:
         )
         require("CCACHE_REMOTE_STORAGE" not in ccache_profile, "the Dockerfile must not own BoringCache's ccache endpoint")
         require(
-            ccache_profile.count("BUNDLE_GLOBAL_GEM_CACHE=true") == 1,
-            "ccache control must retain the fork's native Bundler mount without enabling remote offload",
+            ccache_profile.count("target=/home/discourse/.cache/bundle") == 1,
+            "ccache control must retain the fork's installed-bundle mount without enabling remote offload",
         )
         combined_profile = render(dockerfile, "bundler-ccache")
         require(
-            "BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
+            "cp -a /home/discourse/.cache/bundle/. /var/www/discourse/vendor/bundle/"
             in combined_profile,
-            "combined profile does not enable the Bundler mount cache",
+            "combined profile does not materialize the cached installed bundle",
         )
         require("COPY ccache /usr/bin/ccache" in combined_profile, "combined profile does not stage ccache")
         require(

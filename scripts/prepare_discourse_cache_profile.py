@@ -25,17 +25,28 @@ def replace_once(source: str, before: str, after: str, description: str) -> str:
 
 def verify_bundler_cache(source: str) -> str:
     fragments = {
-        "Bundler cache mount": (
-            "--mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},"
-            "target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000"
+        "installed bundle cache mount": (
+            "--mount=type=cache,id=discourse-bundle-${DISCOURSE_BRANCH},"
+            "target=/home/discourse/.cache/bundle,sharing=locked,uid=1000,gid=1000"
         ),
-        "pnpm cache mount": "target=/home/discourse/.local/share/pnpm/store,sharing=locked,uid=1000,gid=1000",
-        "Bundler global cache": (
-            "BUNDLE_GLOBAL_GEM_CACHE=true "
-            "BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
+        "pnpm home ownership": (
+            "install -dm 0755 -o discourse -g discourse /home/discourse/.local/share/pnpm"
         ),
-        "Bundler cache before-install diagnostic": "Bundler cache before install:",
-        "Bundler cache after-install diagnostic": "Bundler cache after install:",
+        "pnpm home cache mount": (
+            "target=/home/discourse/.local/share/pnpm,sharing=locked,uid=1000,gid=1000"
+        ),
+        "installed bundle path": "bundle config --local path /home/discourse/.cache/bundle",
+        "installed bundle materialization": (
+            "cp -a /home/discourse/.cache/bundle/. /var/www/discourse/vendor/bundle/"
+        ),
+        "final image bundle path": "bundle config --local path ./vendor/bundle",
+        "final image bundle repair install": (
+            "sudo -u discourse bundle install --jobs $(nproc --ignore=1) &&\\\n"
+            "    sudo -u discourse bundle check"
+        ),
+        "final image bundle check": "sudo -u discourse bundle check",
+        "bundle cache before-install diagnostic": "Installed bundle cache before install:",
+        "bundle cache after-install diagnostic": "Installed bundle cache after install:",
     }
     for description, fragment in fragments.items():
         matches = source.count(fragment)
