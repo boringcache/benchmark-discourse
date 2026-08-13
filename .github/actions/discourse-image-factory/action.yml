@@ -249,6 +249,7 @@ runs:
       run: |
         timeout --foreground --signal=TERM --kill-after=1m 45m \
           docker run --rm \
+          -e CI=true \
           -e RUBY_ONLY=1 \
           -e USE_TURBO=1 \
           -e SKIP_PLUGINS=1 \
