@@ -6,6 +6,7 @@ on:
     - cron: "4,34 * * * *"
 
 permissions:
+  actions: write
   contents: write
 
 concurrency:
@@ -22,11 +23,13 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-          token: ${{ secrets.BOT_PUBLIC_GITHUB_TOKEN }}
+          token: ${{ github.token }}
 
       - name: Sync upstream submodules
+        id: sync
         run: |
           set -euo pipefail
+          echo "updated=false" >> "$GITHUB_OUTPUT"
           git config --global user.name "boringcache-bot"
           git config --global user.email "boringcache-bot@users.noreply.github.com"
 
@@ -62,3 +65,10 @@ jobs:
           git add upstream docker-upstream
           git commit -m "Update upstreams to ${upstream_repo}@${upstream_sha} and ${docker_upstream_repo}@${docker_upstream_sha}"
           git push origin HEAD:main
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch rolling benchmark
+        if: steps.sync.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run discourse-image-factory.yml --repo "$GITHUB_REPOSITORY" --ref main
