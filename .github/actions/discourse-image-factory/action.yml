@@ -148,7 +148,7 @@ runs:
         trust-policy: restore
         setup: none
         mode: docker
-        working-directory: .
+        working-directory: docker-upstream/image
         docker-command: setup
         managed-buildkit-image: ${{ inputs.buildkit_image }}
         proxy-port: "22244"

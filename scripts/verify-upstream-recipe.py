@@ -216,6 +216,10 @@ def main() -> int:
         require("https://install.boringcache.com/install.sh" not in action, "hand-written CLI installer returned")
         require("docker-command: setup" in action, "the Action must install the CLI without replacing upstream Bake")
         require("trust-policy: restore" in action, "the setup-only Action invocation must not publish an empty cache")
+        require(
+            "working-directory: docker-upstream/image" in action,
+            "the Action setup must resolve the materialized per-lane Bake plan",
+        )
         require("cli-version: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
         require(
             "BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}" in action,
