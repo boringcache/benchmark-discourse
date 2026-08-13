@@ -12,7 +12,7 @@ on:
       discourse_ref: {description: "Optional full Discourse commit SHA for a historical run.", required: false, type: string, default: ""}
       seed_ref: {description: "Older Discourse commit used to seed the cache experiment.", required: true, type: string, default: "eedf0ac2344c37d66a2c9ab05dc8a83bf3efd9bb"}
       rolling_ref: {description: "Newer Discourse commit with unchanged dependency locks.", required: true, type: string, default: "763655f6faf47b088afee1a59e2d97cec5886c97"}
-      docker_ref: {description: "Full BoringCache discourse_docker cache-wiring commit SHA.", required: true, type: string, default: "5cc4f095b4efdb7bd105577e021390f6c2dfa147"}
+      docker_ref: {description: "Full BoringCache discourse_docker cache-wiring commit SHA.", required: true, type: string, default: "f551d332451ed9794ce27a112dbbca3025a6eafc"}
   push:
     branches: [main]
     paths: [".boringcache.toml", ".gitmodules", "plans/**", "scripts/**", ".github/actions/discourse-image-factory/**", "upstream", "docker-upstream"]

@@ -120,6 +120,11 @@ def main() -> int:
         fresh = (ROOT / ".github/workflows/discourse-image-factory-fresh.yml").read_text()
         require("discourse-dev.Dockerfile" not in action + rolling + fresh, "custom Dockerfile returned")
         dockerfile = UPSTREAM_DOCKERFILE.read_text()
+        require("COPY install-redis" not in dockerfile, "obsolete PR #1088 Redis installer copy returned")
+        require(
+            "apt-get -y update && DEBIAN_FRONTEND=noninteractive apt-get -y install redis" in dockerfile,
+            "current upstream Redis package installation is missing",
+        )
         require(render(dockerfile, "baseline") == dockerfile, "baseline cache profile must leave upstream unchanged")
         bundler_profile = render(dockerfile, "bundler")
         require(bundler_profile == dockerfile, "Bundler profile must use the fork's committed cache mount")
