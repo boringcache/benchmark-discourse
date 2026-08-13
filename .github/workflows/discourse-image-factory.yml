@@ -4,7 +4,7 @@ run-name: ${{ format('Discourse image factory | {0}', github.event_name == 'push
 on:
   workflow_dispatch:
     inputs:
-      cli_version: {description: "Exact BoringCache CLI release.", required: true, type: string, default: "1.19.1"}
+      cli_version: {description: "Exact BoringCache CLI release.", required: true, type: string, default: "v1.19.1"}
       buildkit_image: {description: "Optional managed BuildKit image canary.", required: false, type: string, default: ""}
       benchmark_id_suffix: {description: "Optional suffix for an isolated comparison.", required: false, type: string, default: ""}
       bundler_cache_experiment: {description: "Seed and roll the full upstream graph across GHA, BoringCache, and BoringCache with mount/tool caches.", required: false, type: boolean, default: false}

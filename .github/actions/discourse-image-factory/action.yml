@@ -83,7 +83,7 @@ runs:
         CACHE_PROFILE: ${{ inputs.cache_profile }}
       run: python3 ./scripts/prepare_discourse_cache_profile.py "${CACHE_PROFILE:-baseline}"
 
-    - name: Stage the CLI-compatible ccache binary
+    - name: Prepare ccache 4.13.6 for the Docker build context
       if: inputs.cache_profile == 'ccache' || inputs.cache_profile == 'bundler-ccache'
       shell: bash
       run: ./scripts/stage-ccache-binary.sh "${{ inputs.arch }}" docker-upstream/image/base/ccache
@@ -91,34 +91,6 @@ runs:
     - name: Set up Buildx for the GitHub Actions comparison
       if: inputs.strategy == 'actions-cache'
       uses: docker/setup-buildx-action@v4
-
-    - name: Install the released BoringCache CLI
-      if: inputs.strategy == 'boringcache'
-      shell: bash
-      env:
-        CLI_VERSION: ${{ inputs.cli_version }}
-      run: |
-        set -euo pipefail
-        installer="$(mktemp)"
-        trap 'rm -f "$installer"' EXIT
-        curl -fsSL --retry 8 --retry-all-errors --connect-timeout 30 --max-time 180 \
-          -H "Cache-Control: no-cache" -H "Pragma: no-cache" \
-          https://install.boringcache.com/install.sh -o "$installer"
-        if [[ -n "$CLI_VERSION" ]]; then
-          export BORINGCACHE_INSTALLER_SOURCE_ONLY=1
-          source "$installer"
-          download_file() {
-            local url="$1"
-            local output="$2"
-            curl -fsSL --retry 8 --retry-all-errors --connect-timeout 30 --max-time 180 \
-              "$url" -o "$output"
-          }
-          install_binary linux "$(detect_arch)" "$CLI_VERSION"
-        else
-          bash "$installer"
-        fi
-        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
-        boringcache --version
 
     - name: Select the cache cohort
       id: scope
@@ -151,11 +123,6 @@ runs:
         echo "discourse_source_datestamp=$(git -C upstream show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C docker-upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-    - name: Start image-factory timing
-      id: build_timer
-      shell: bash
-      run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
-
     - name: Select the BoringCache image-factory plan
       if: inputs.strategy == 'boringcache'
       shell: bash
@@ -170,6 +137,32 @@ runs:
         python3 ./scripts/select-boringcache-plan.py "$PLAN" \
           --cache-tag "$CACHE_SCOPE" \
           --ccache-tag "${CACHE_SCOPE}-compiler"
+
+    # boringcache/one owns the reviewed CLI installation. Discourse still runs
+    # its upstream target-by-target Bake commands through the shared CLI plan.
+    - name: Set up BoringCache for the upstream Bake graph
+      if: inputs.strategy == 'boringcache'
+      uses: boringcache/one@e24257b122813ad11d53b9ed024b474ca4946ad2 # v1.19.1
+      with:
+        cli-version: ${{ inputs.cli_version }}
+        trust-policy: restore
+        setup: none
+        mode: docker
+        working-directory: .
+        docker-command: setup
+        managed-buildkit-image: ${{ inputs.buildkit_image }}
+        proxy-port: "22244"
+        diagnostics: summary
+        fail-on-cache-error: true
+        metadata-hints: benchmark=discourse,purpose=bake-cli-setup
+      env:
+        BORINGCACHE_RESTORE_TOKEN: ${{ env.BORINGCACHE_RESTORE_TOKEN }}
+        BORINGCACHE_SAVE_TOKEN: ""
+
+    - name: Start image-factory timing
+      id: build_timer
+      shell: bash
+      run: echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
     - name: Build with the GitHub Actions cache
       if: inputs.strategy == 'actions-cache'

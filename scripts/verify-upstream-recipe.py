@@ -209,8 +209,14 @@ def main() -> int:
             boringcache_runner.count('"boringcache",') == 1,
             "BoringCache target runner must use one CLI-owned Docker lifecycle per target",
         )
-        require("https://install.boringcache.com/install.sh" in action, "BoringCache path must use the public installer")
-        require("CLI_VERSION: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
+        require(
+            "uses: boringcache/one@e24257b122813ad11d53b9ed024b474ca4946ad2 # v1.19.1" in action,
+            "BoringCache setup must use the reviewed v1.19.1 Action distribution",
+        )
+        require("https://install.boringcache.com/install.sh" not in action, "hand-written CLI installer returned")
+        require("docker-command: setup" in action, "the Action must install the CLI without replacing upstream Bake")
+        require("trust-policy: restore" in action, "the setup-only Action invocation must not publish an empty cache")
+        require("cli-version: ${{ inputs.cli_version }}" in action, "CLI canary input is not forwarded")
         require(
             "BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}" in action,
             "BuildKit canary input is not forwarded",
@@ -236,12 +242,18 @@ def main() -> int:
         )
         require("continue-on-error: true" in action, "benchmark evidence must survive an upstream spec timeout")
         require(
-            "Stage the CLI-compatible ccache binary" in action,
+            "Prepare ccache 4.13.6 for the Docker build context" in action,
             "ccache profile must stage its compatible binary on the native runner",
         )
         require(
-            action.index("Stage the CLI-compatible ccache binary") < action.index("Start image-factory timing"),
+            action.index("Prepare ccache 4.13.6 for the Docker build context")
+            < action.index("Start image-factory timing"),
             "ccache tool setup must stay outside build timing",
+        )
+        require(
+            action.index("Set up BoringCache for the upstream Bake graph")
+            < action.index("Start image-factory timing"),
+            "BoringCache Action setup must stay outside build timing",
         )
         require("Smoke test the runtime-deps image" in action, "focused ccache builds must smoke test their output")
         require("if: inputs.run_specs == 'true'" in action, "focused builds must be able to skip unrelated image specs")
