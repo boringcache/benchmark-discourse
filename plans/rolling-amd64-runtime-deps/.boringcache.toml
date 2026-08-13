@@ -1,4 +1,4 @@
-workspace = "boringcache/benchmark-discourse"
+workspace = "discourse/benchmark-discourse"
 
 [adapters.docker]
 tag = "discourse-runtime-deps-rolling-amd64"
@@ -9,7 +9,7 @@ metadata-hints = ["benchmark=discourse", "upstream-job=base-runtime-deps", "lane
 command = [
   "docker", "buildx", "bake",
   "base-runtime-deps",
-  "--set=base-runtime-deps-*.no-cache=true",
+  "--set=base-runtime-deps.no-cache=true",
   "--load",
 ]
 

@@ -5,5 +5,6 @@
 	shallow = true
 [submodule "docker-upstream"]
 	path = docker-upstream
-	url = https://github.com/discourse/discourse_docker.git
+	url = https://github.com/boringcache/discourse_docker.git
+	branch = agent/benchmark-cache-controls
 	shallow = true

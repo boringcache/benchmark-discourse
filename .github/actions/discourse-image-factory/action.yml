@@ -148,6 +148,7 @@ runs:
         fi
         echo "cache_scope=${cache_scope}" >> "$GITHUB_OUTPUT"
         echo "discourse_source_sha=${tests_passed_sha}" >> "$GITHUB_OUTPUT"
+        echo "discourse_source_datestamp=$(git -C upstream show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
         echo "source_sha=$(git -C docker-upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
     - name: Start image-factory timing
@@ -175,28 +176,40 @@ runs:
       shell: bash
       env:
         ARCH: ${{ inputs.arch }}
+        DATESTAMP: ${{ steps.scope.outputs.discourse_source_datestamp }}
+        DISCOURSE_REF: ${{ inputs.discourse_ref }}
         PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
         PLAN_VARIANT: ${{ inputs.plan_variant }}
+        READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
       run: |
         if [[ -n "$PLAN_VARIANT" ]]; then
           PLAN="${PLAN}-${PLAN_VARIANT}"
         fi
-        python3 ./scripts/run-actions-cache-plan.py "$PLAN" \
-          --cache-scope "${{ steps.scope.outputs.cache_scope }}"
+        args=(--cache-scope "${{ steps.scope.outputs.cache_scope }}")
+        if [[ "$READ_ONLY" == "true" ]]; then
+          args+=(--read-only)
+        fi
+        python3 ./scripts/run-actions-cache-plan.py "$PLAN" "${args[@]}"
 
     - name: Build with BoringCache
       if: inputs.strategy == 'boringcache'
       shell: bash
-      working-directory: docker-upstream/image
       env:
         ARCH: ${{ inputs.arch }}
+        DATESTAMP: ${{ steps.scope.outputs.discourse_source_datestamp }}
+        DISCOURSE_REF: ${{ inputs.discourse_ref }}
         BORINGCACHE_MANAGED_BUILDKIT_IMAGE: ${{ inputs.buildkit_image }}
         BORINGCACHE_MANAGED_BUILDKIT_LOG_PATH: ${{ runner.temp }}/boringcache-managed-buildkit-${{ inputs.arch }}-${{ inputs.cache_lane }}-${{ inputs.phase }}.log
         READ_ONLY: ${{ inputs.phase == 'warm' && 'true' || 'false' }}
         CACHE_PROFILE: ${{ inputs.cache_profile }}
+        PLAN: ${{ format('{0}-{1}', inputs.cache_lane, inputs.arch) }}
+        PLAN_VARIANT: ${{ inputs.plan_variant }}
         RUST_LOG: warn
       run: |
         set -euo pipefail
+        if [[ -n "$PLAN_VARIANT" ]]; then
+          PLAN="${PLAN}-${PLAN_VARIANT}"
+        fi
         args=()
         if [[ "$READ_ONLY" == "true" ]]; then
           args+=(--read-only)
@@ -205,9 +218,9 @@ runs:
           args+=(--mount-cache)
         fi
         if [[ "$CACHE_PROFILE" == "ccache" || "$CACHE_PROFILE" == "bundler-ccache" ]]; then
-          args+=(--tool-cache ccache)
+          args+=(--tool-cache-ccache)
         fi
-        boringcache docker "${args[@]}"
+        python3 ./scripts/run-boringcache-plan.py "$PLAN" "${args[@]}"
 
     - name: Capture image-factory timing
       id: timing
@@ -219,7 +232,7 @@ runs:
     - name: Smoke test the runtime-deps image
       if: inputs.plan_variant == 'runtime-deps'
       shell: bash
-      run: docker run --rm "${BASE_IMAGE}:runtime-deps-${{ inputs.arch }}" /bin/true
+      run: docker run --rm "${BASE_IMAGE}:runtime-deps" /bin/true
 
     - name: Show managed BuildKit errors
       if: ${{ inputs.strategy == 'boringcache' && failure() }}
@@ -249,7 +262,7 @@ runs:
           -e SKIP_LINT=1 \
           -e DISCOURSE_TURBO_RSPEC_RETRY_AND_LOG_FLAKY_TESTS=1 \
           -e COMMIT_HASH="$DISCOURSE_SOURCE_SHA" \
-          "${TEST_IMAGE}:release-${{ inputs.arch }}"
+          "${TEST_IMAGE}:release"
 
     - name: Write benchmark evidence
       shell: bash
@@ -275,8 +288,8 @@ runs:
           --workflow-seconds "$(( $(date +%s) - WORKFLOW_STARTED_AT ))" \
           --build-seconds "$BUILD_SECONDS" \
           --cache-tag "$CACHE_SCOPE" \
-          --workspace boringcache/benchmark-discourse \
-          --source-repository discourse/discourse_docker \
+          --workspace discourse/benchmark-discourse \
+          --source-repository boringcache/discourse_docker \
           --source-sha "$SOURCE_SHA" \
           --workload-repository discourse/discourse \
           --workload-sha "$DISCOURSE_SOURCE_SHA"

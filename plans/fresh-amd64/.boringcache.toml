@@ -1,4 +1,4 @@
-workspace = "boringcache/benchmark-discourse"
+workspace = "discourse/benchmark-discourse"
 
 [adapters.docker]
 tag = "discourse-image-factory-fresh-amd64"
@@ -8,13 +8,9 @@ fail-on-cache-error = true
 metadata-hints = ["benchmark=discourse", "upstream-job=base", "lane=fresh", "arch=amd64"]
 command = [
   "docker", "buildx", "bake",
-  "base-runtime-deps",
-  "base-slim",
-  "base-web-only",
-  "base-release",
-  "test-release-amd64",
-  "--set=base-runtime-deps-*.no-cache=true",
-  "--load",
+  "base-runtime-deps", "base-slim-main", "base-slim-stable",
+  "base-web-only-main", "base-web-only-stable",
+  "base-release-main", "base-release-stable", "test-release",
 ]
 
 [adapters.ccache]

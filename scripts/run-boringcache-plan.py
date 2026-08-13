@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the committed Discourse Bake graph with GitHub Actions Cache."""
+"""Execute Discourse's upstream Bake targets individually through BoringCache."""
 
 from __future__ import annotations
 
@@ -16,8 +16,9 @@ UPSTREAM_IMAGE = ROOT / "docker-upstream/image"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("plan")
-    parser.add_argument("--cache-scope", required=True)
     parser.add_argument("--read-only", action="store_true")
+    parser.add_argument("--mount-cache", action="store_true")
+    parser.add_argument("--tool-cache-ccache", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -39,26 +40,30 @@ def main() -> int:
     plan_dir = (ROOT / "plans" / args.plan).resolve()
     if plan_dir.parent != (ROOT / "plans").resolve():
         raise SystemExit(f"Unknown plan: {args.plan}")
+
+    boringcache_args: list[str] = []
+    if args.read_only:
+        boringcache_args.append("--read-only")
+    if args.mount_cache:
+        boringcache_args.append("--mount-cache")
+    if args.tool_cache_ccache:
+        boringcache_args.extend(("--tool-cache", "ccache"))
+    if args.dry_run:
+        boringcache_args.append("--dry-run")
+
     targets, plan_options = load_plan(plan_dir)
     for target in targets:
-        target_scope = f"{args.cache_scope}-{target}"
         command = [
+            "boringcache",
+            "docker",
+            *boringcache_args,
+            "--",
             "docker",
             "buildx",
             "bake",
             target,
             *(plan_options or ["--load"]),
-            f"--set={target}.cache-from=type=gha,scope={target_scope}",
         ]
-        if target == "test-release":
-            command.append(
-                "--set=base-slim-main.cache-from="
-                f"type=gha,scope={args.cache_scope}-base-slim-main"
-            )
-        if not args.read_only:
-            command.append(f"--set={target}.cache-to=type=gha,scope={target_scope},mode=max")
-        if args.dry_run:
-            command.append("--print")
         result = subprocess.run(command, cwd=UPSTREAM_IMAGE, check=False)
         if result.returncode != 0:
             return result.returncode

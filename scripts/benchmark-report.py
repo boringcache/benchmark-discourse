@@ -21,6 +21,7 @@ PROVIDER_LABELS = {
     "actions-cache": "GitHub Actions",
     "boringcache": "BoringCache",
     "boringcache-bundler": "BoringCache + Bundler mount",
+    "boringcache-bundler-ccache": "BoringCache + Bundler mount + ccache",
     "boringcache-ccache": "BoringCache + ccache",
     "boringcache-mountcache": "BoringCache mountcache",
     "boringcache-native": "BoringCache native",

@@ -23,23 +23,25 @@ def replace_once(source: str, before: str, after: str, description: str) -> str:
     return source.replace(before, after, 1)
 
 
-def add_bundler_cache(source: str) -> str:
-    return replace_once(
-        source,
-        "RUN cd /var/www/discourse &&\\\n"
-        "    sudo -u discourse bundle config --local deployment true &&\\\n"
-        "    sudo -u discourse bundle config --local path ./vendor/bundle &&\\\n"
-        "    sudo -u discourse bundle config --local without test development &&\\\n"
-        "    sudo -u discourse bundle install --jobs $(nproc --ignore=1) &&\\\n",
-        "RUN --mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000 \\\n"
-        "    cd /var/www/discourse &&\\\n"
-        "    sudo -u discourse bundle config --local deployment true &&\\\n"
-        "    sudo -u discourse bundle config --local path ./vendor/bundle &&\\\n"
-        "    sudo -u discourse bundle config --local without test development &&\\\n"
-        "    sudo -u discourse env BUNDLE_GLOBAL_GEM_CACHE=true BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install --jobs $(nproc --ignore=1) &&\\\n"
-        "    sudo -u discourse du -sh /home/discourse/.bundle/cache &&\\\n",
-        "Bundler install command",
-    )
+def verify_bundler_cache(source: str) -> str:
+    fragments = {
+        "Bundler cache mount": (
+            "--mount=type=cache,id=discourse-bundler-${DISCOURSE_BRANCH},"
+            "target=/home/discourse/.bundle/cache,sharing=locked,uid=1000,gid=1000"
+        ),
+        "pnpm cache mount": "target=/home/discourse/.local/share/pnpm/store,sharing=locked,uid=1000,gid=1000",
+        "Bundler global cache": (
+            "BUNDLE_GLOBAL_GEM_CACHE=true "
+            "BUNDLE_USER_CACHE=/home/discourse/.bundle/cache bundle install"
+        ),
+        "Bundler cache before-install diagnostic": "Bundler cache before install:",
+        "Bundler cache after-install diagnostic": "Bundler cache after install:",
+    }
+    for description, fragment in fragments.items():
+        matches = source.count(fragment)
+        if matches != 1:
+            raise ProfileMismatch(f"expected one {description}, found {matches}")
+    return source
 
 
 def add_ccache(source: str) -> str:
@@ -73,11 +75,11 @@ def render(source: str, profile: str) -> str:
     if profile == "baseline":
         return source
     if profile == "bundler":
-        return add_bundler_cache(source)
+        return verify_bundler_cache(source)
     if profile == "ccache":
         return add_ccache(source)
     if profile == "bundler-ccache":
-        return add_ccache(add_bundler_cache(source))
+        return add_ccache(verify_bundler_cache(source))
     raise ProfileMismatch(f"unknown cache profile: {profile}")
 
 
